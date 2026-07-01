@@ -14,12 +14,13 @@ import {
 } from "recharts";
 import {
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut as fbSignOut,
   onAuthStateChanged,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
-  collection, onSnapshot, doc, getDoc, updateDoc,
+  collection, onSnapshot, doc, getDoc, setDoc, updateDoc,
   query, orderBy, limit, serverTimestamp,
 } from "firebase/firestore";
 import { fbAuth, db } from "../firebase";
@@ -306,10 +307,51 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   );
 }
 
+// ─── Shared Auth Layout ───────────────────────────────────────────────────────
+function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: string }) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col justify-between p-12">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+            <Building2 size={18} className="text-white" />
+          </div>
+          <span className="text-white font-semibold text-lg tracking-tight">WorkForce HR</span>
+        </div>
+        <div>
+          <blockquote className="text-slate-300 text-2xl font-light leading-relaxed mb-6">
+            {quote ?? <>"Workforce intelligence,<br />centralized and secure."</>}
+          </blockquote>
+          <div className="flex flex-wrap gap-3">
+            {["Smart Attendance", "Live GPS", "Leave Mgmt", "Analytics"].map(tag => (
+              <div key={tag} className="bg-slate-800 rounded-lg px-4 py-2">
+                <span className="text-slate-300 text-xs font-medium">{tag}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="text-slate-500 text-sm">© 2026 WorkForce Smart Attendance. All rights reserved.</p>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 overflow-y-auto">
+        <div className="w-full max-w-md">
+          <div className="flex items-center gap-3 mb-8 lg:hidden">
+            <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+              <Building2 size={18} className="text-white" />
+            </div>
+            <span className="font-semibold text-lg tracking-tight text-slate-900">WorkForce HR</span>
+          </div>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Login Page ───────────────────────────────────────────────────────────────
-function LoginPage() {
+function LoginPage({ onSignUp }: { onSignUp: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -332,77 +374,282 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col justify-between p-12">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Building2 size={18} className="text-white" />
-          </div>
-          <span className="text-white font-semibold text-lg tracking-tight">WorkForce HR</span>
+    <AuthLayout>
+      <h1 className="text-2xl font-semibold text-slate-900 mb-1">Welcome back</h1>
+      <p className="text-slate-500 text-sm mb-8">Sign in to your admin dashboard</p>
+
+      {error && (
+        <div className="mb-5 flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+          <AlertCircle size={14} className="text-red-600 flex-shrink-0" />
+          <p className="text-xs text-red-700">{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
+          <input
+            type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus
+            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            placeholder="admin@yourcompany.com"
+          />
         </div>
         <div>
-          <blockquote className="text-slate-300 text-2xl font-light leading-relaxed mb-6">
-            "Workforce intelligence, <br />
-            centralized and secure."
-          </blockquote>
-          <div className="flex gap-4">
-            {["Smart Attendance", "Live GPS", "Leave Mgmt"].map(stat => (
-              <div key={stat} className="bg-slate-800 rounded-lg px-4 py-2">
-                <span className="text-slate-300 text-xs font-medium">{stat}</span>
-              </div>
-            ))}
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required
+              className="w-full px-3.5 py-2.5 pr-10 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+              placeholder="••••••••"
+            />
+            <button type="button" onClick={() => setShowPassword(p => !p)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              <Eye size={15} />
+            </button>
           </div>
         </div>
-        <p className="text-slate-500 text-sm">© 2026 WorkForce Smart Attendance. All rights reserved.</p>
-      </div>
+        <button
+          type="submit" disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 mt-2"
+        >
+          {loading
+            ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Signing in...</>
+            : "Sign in"}
+        </button>
+      </form>
 
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          <div className="flex items-center gap-3 mb-10 lg:hidden">
-            <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Building2 size={18} className="text-white" />
-            </div>
-            <span className="font-semibold text-lg tracking-tight text-slate-900">WorkForce HR</span>
+      <p className="text-center text-sm text-slate-500 mt-6">
+        Don't have an account?{" "}
+        <button onClick={onSignUp} className="text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
+          Create account
+        </button>
+      </p>
+    </AuthLayout>
+  );
+}
+
+// ─── Sign Up Page ─────────────────────────────────────────────────────────────
+function SignUpPage({ onLogin }: { onLogin: () => void }) {
+  const [form, setForm] = useState({
+    name: "", company: "", email: "", phone: "",
+    password: "", confirmPassword: "", role: "admin" as "admin" | "superadmin",
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(prev => ({ ...prev, [key]: e.target.value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+
+    if (form.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const credential = await createUserWithEmailAndPassword(fbAuth, form.email, form.password);
+      await setDoc(doc(db, "admins", credential.user.uid), {
+        name: form.name.trim(),
+        company: form.company.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        role: form.role,
+        createdAt: serverTimestamp(),
+      });
+      setSuccess(true);
+      // onAuthStateChanged will pick up the new user and redirect to dashboard automatically
+    } catch (err: any) {
+      const code = err?.code ?? "";
+      setError(
+        code === "auth/email-already-in-use"
+          ? "An account with this email already exists. Sign in instead."
+          : code === "auth/weak-password"
+          ? "Password is too weak. Use at least 8 characters."
+          : code === "auth/invalid-email"
+          ? "Please enter a valid email address."
+          : "Registration failed. Check your connection and try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <AuthLayout>
+        <div className="text-center py-8">
+          <div className="h-16 w-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-5">
+            <CheckCircle2 size={32} className="text-emerald-500" />
           </div>
+          <h2 className="text-xl font-semibold text-slate-900 mb-2">Account created!</h2>
+          <p className="text-slate-500 text-sm">Welcome to WorkForce HR. Redirecting you to the dashboard…</p>
+          <div className="mt-6 flex justify-center">
+            <div className="h-5 w-5 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+          </div>
+        </div>
+      </AuthLayout>
+    );
+  }
 
-          <h1 className="text-2xl font-semibold text-slate-900 mb-1">Admin Sign in</h1>
-          <p className="text-slate-500 text-sm mb-8">Access your HR management dashboard</p>
+  return (
+    <AuthLayout quote={<>"Set up your workspace<br />in under a minute."</>}>
+      <h1 className="text-2xl font-semibold text-slate-900 mb-1">Create admin account</h1>
+      <p className="text-slate-500 text-sm mb-7">Register your organisation on WorkForce HR</p>
 
-          {error && (
-            <div className="mb-5 flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
-              <AlertCircle size={14} className="text-red-600 flex-shrink-0" />
-              <p className="text-xs text-red-700">{error}</p>
+      {error && (
+        <div className="mb-5 flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+          <AlertCircle size={14} className="text-red-600 flex-shrink-0" />
+          <p className="text-xs text-red-700">{error}</p>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Name + Company */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Full name <span className="text-red-500">*</span></label>
+            <input
+              value={form.name} onChange={set("name")} required autoFocus
+              placeholder="John Smith"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Company <span className="text-red-500">*</span></label>
+            <input
+              value={form.company} onChange={set("company")} required
+              placeholder="Acme Corp"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Email */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Work email <span className="text-red-500">*</span></label>
+          <input
+            type="email" value={form.email} onChange={set("email")} required
+            placeholder="you@company.com"
+            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+          />
+        </div>
+
+        {/* Phone + Role */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone</label>
+            <input
+              type="tel" value={form.phone} onChange={set("phone")}
+              placeholder="+91 98765 43210"
+              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Admin role <span className="text-red-500">*</span></label>
+            <div className="relative">
+              <select
+                value={form.role} onChange={set("role")}
+                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+              >
+                <option value="admin">Dept. Admin</option>
+                <option value="superadmin">Super Admin</option>
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+        </div>
+
+        {/* Role hint */}
+        <div className={`flex items-start gap-2 p-3 rounded-lg text-xs ${form.role === "superadmin" ? "bg-indigo-50 border border-indigo-200 text-indigo-700" : "bg-slate-50 border border-slate-200 text-slate-500"}`}>
+          <Shield size={13} className="mt-0.5 flex-shrink-0" />
+          {form.role === "superadmin"
+            ? "Super Admin has access to GPS tracking, file sync, and communication logs in addition to all standard features."
+            : "Dept. Admin can manage employees, attendance, leave requests, and analytics."}
+        </div>
+
+        {/* Password */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Password <span className="text-red-500">*</span></label>
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"} value={form.password} onChange={set("password")} required minLength={8}
+              placeholder="Minimum 8 characters"
+              className="w-full px-3.5 py-2.5 pr-10 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            />
+            <button type="button" onClick={() => setShowPassword(p => !p)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              <Eye size={15} />
+            </button>
+          </div>
+          {form.password.length > 0 && (
+            <div className="flex gap-1 mt-2">
+              {[4, 6, 8, 10].map(n => (
+                <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${form.password.length >= n ? (form.password.length >= 10 ? "bg-emerald-500" : form.password.length >= 8 ? "bg-amber-400" : "bg-red-400") : "bg-slate-200"}`} />
+              ))}
+              <span className={`text-xs ml-1 ${form.password.length >= 10 ? "text-emerald-600" : form.password.length >= 8 ? "text-amber-600" : "text-red-500"}`}>
+                {form.password.length >= 10 ? "Strong" : form.password.length >= 8 ? "Good" : "Weak"}
+              </span>
             </div>
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
-              <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-                placeholder="admin@yourcompany.com"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
-              <input
-                type="password" value={password} onChange={e => setPassword(e.target.value)} required
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-              />
-            </div>
-            <button
-              type="submit" disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Authenticating...</>
-              ) : "Sign in"}
-            </button>
-          </form>
         </div>
-      </div>
-    </div>
+
+        {/* Confirm Password */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirm password <span className="text-red-500">*</span></label>
+          <div className="relative">
+            <input
+              type={showConfirm ? "text" : "password"} value={form.confirmPassword} onChange={set("confirmPassword")} required
+              placeholder="Re-enter your password"
+              className={`w-full px-3.5 py-2.5 pr-10 rounded-lg border text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-colors ${
+                form.confirmPassword && form.confirmPassword !== form.password
+                  ? "border-red-300 bg-red-50 focus:ring-red-500/20 focus:border-red-400"
+                  : form.confirmPassword && form.confirmPassword === form.password
+                  ? "border-emerald-300 bg-emerald-50 focus:ring-emerald-500/20 focus:border-emerald-400"
+                  : "border-slate-200 bg-white focus:ring-indigo-500/20 focus:border-indigo-500"
+              }`}
+            />
+            <button type="button" onClick={() => setShowConfirm(p => !p)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              <Eye size={15} />
+            </button>
+            {form.confirmPassword && (
+              <div className="absolute right-9 top-1/2 -translate-y-1/2">
+                {form.confirmPassword === form.password
+                  ? <CheckCircle2 size={14} className="text-emerald-500" />
+                  : <XCircle size={14} className="text-red-400" />}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="submit" disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 mt-1"
+        >
+          {loading
+            ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating account...</>
+            : "Create account"}
+        </button>
+      </form>
+
+      <p className="text-center text-sm text-slate-500 mt-6">
+        Already have an account?{" "}
+        <button onClick={onLogin} className="text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
+          Sign in
+        </button>
+      </p>
+    </AuthLayout>
   );
 }
 
@@ -1634,6 +1881,7 @@ function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Rol
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authView, setAuthView] = useState<"login" | "signup">("login");
   const [role, setRole] = useState<Role>("admin");
   const [userProfile, setUserProfile] = useState({ name: "", email: "" });
 
@@ -1671,7 +1919,11 @@ export default function App() {
     );
   }
 
-  if (!firebaseUser) return <LoginPage />;
+  if (!firebaseUser) {
+    return authView === "signup"
+      ? <SignUpPage onLogin={() => setAuthView("login")} />
+      : <LoginPage onSignUp={() => setAuthView("signup")} />;
+  }
 
   return <AppShell role={role} setRole={setRole} userProfile={userProfile} />;
 }
