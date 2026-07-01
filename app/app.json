@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "WorkForce",
+    "slug": "employee-attendance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2563EB"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.worktrack.attendance",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "WorkForce uses your location to verify office presence for attendance.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "WorkForce uses your location in the background for attendance tracking.",
+        "NSMicrophoneUsageDescription": "WorkForce may access the microphone for enterprise compliance features.",
+        "NSFaceIDUsageDescription": "WorkForce uses Face ID / Touch ID for secure authentication."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2563EB"
+      },
+      "package": "com.worktrack.attendance",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECORD_AUDIO",
+        "READ_CALL_LOG",
+        "READ_PHONE_STATE",
+        "FOREGROUND_SERVICE",
+        "RECEIVE_BOOT_COMPLETED",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-location",
+      "expo-local-authentication",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 24
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "068f5075-0657-4420-8eec-56752954df14"
+      }
+    },
+    "owner": "vigneshsivakspm"
+  }
+}

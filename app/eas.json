@@ -1,0 +1,49 @@
+{
+  "cli": {
+    "version": ">= 10.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCYTV15D-fAxQ8Xf25fEjv0VGCHB8jbFmo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "niklaus-sms.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "niklaus-sms",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "niklaus-sms.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "960099181513",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:960099181513:web:6e10699f60c1bf66797e18"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCYTV15D-fAxQ8Xf25fEjv0VGCHB8jbFmo",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "niklaus-sms.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "niklaus-sms",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "niklaus-sms.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "960099181513",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:960099181513:web:6e10699f60c1bf66797e18"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal"
+      }
+    }
+  }
+}
