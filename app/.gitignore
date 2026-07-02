@@ -35,6 +35,6 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Firebase
-google-services.json
+# Firebase (native config files are intentionally tracked for EAS builds)
+# google-services.json — committed so EAS can find it during prebuild
 GoogleService-Info.plist
