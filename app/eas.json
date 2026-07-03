@@ -8,15 +8,13 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "image": "ubuntu-22.04-jdk-17-ndk-r21e"
+        "buildType": "apk"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "image": "ubuntu-22.04-jdk-17-ndk-r21e"
+        "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCYTV15D-fAxQ8Xf25fEjv0VGCHB8jbFmo",
@@ -29,8 +27,7 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle",
-        "image": "ubuntu-22.04-jdk-17-ndk-r21e"
+        "buildType": "app-bundle"
       },
       "env": {
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCYTV15D-fAxQ8Xf25fEjv0VGCHB8jbFmo",
