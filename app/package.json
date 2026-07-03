@@ -22,7 +22,6 @@
     "expo-linear-gradient": "~14.0.1",
     "expo-local-authentication": "~15.0.1",
     "expo-location": "~18.0.4",
-    "expo-modules-core": "~2.0.4",
     "expo-status-bar": "~2.0.0",
     "firebase": "^12.15.0",
     "react": "18.3.1",
