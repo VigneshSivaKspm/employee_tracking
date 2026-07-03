@@ -49,6 +49,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withGradleFix",
       "expo-location",
       "expo-local-authentication",
       [
