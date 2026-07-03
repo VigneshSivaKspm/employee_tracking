@@ -63,7 +63,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-font"
     ],
     "owner": "vigneshsivakspm",
     "extra": {
