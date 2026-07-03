@@ -38,7 +38,11 @@
         "FOREGROUND_SERVICE",
         "RECEIVE_BOOT_COMPLETED",
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -60,11 +64,11 @@
         }
       ]
     ],
+    "owner": "vigneshsivakspm",
     "extra": {
       "eas": {
-        "projectId": "068f5075-0657-4420-8eec-56752954df14"
+        "projectId": "4e3e0403-1c00-42a8-a86a-01fe3aaa42c2"
       }
-    },
-    "owner": "vigneshsivakspm"
+    }
   }
 }
