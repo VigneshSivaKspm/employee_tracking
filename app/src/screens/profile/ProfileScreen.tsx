@@ -23,6 +23,10 @@ type RootStackParamList = {
   SubscriptionPlans: undefined;
   EngineeringMenu: undefined;
   Login: undefined;
+  Targets: undefined;
+  ServiceRequests: undefined;
+  Calendar: undefined;
+  Sales: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -198,6 +202,36 @@ export default function ProfileScreen() {
                 {idx < arr.length - 1 && <View style={styles.divider} />}
               </React.Fragment>
             ))}
+          </View>
+
+          {/* Quick Links */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>My Work</Text>
+            <SettingsRow
+              iconName="trophy-outline"
+              iconBg="#2563EB"
+              label="My Targets"
+              onPress={() => (navigation as any).navigate('Targets')}
+            />
+            <SettingsRow
+              iconName="receipt-outline"
+              iconBg="#16A34A"
+              label="Sales & Expenses"
+              onPress={() => (navigation as any).navigate('Sales')}
+            />
+            <SettingsRow
+              iconName="construct-outline"
+              iconBg="#D97706"
+              label="Service Requests"
+              onPress={() => (navigation as any).navigate('ServiceRequests')}
+            />
+            <SettingsRow
+              iconName="calendar-outline"
+              iconBg="#7C3AED"
+              label="Calendar"
+              onPress={() => (navigation as any).navigate('Calendar')}
+              isLast
+            />
           </View>
 
           {/* Account / Settings */}

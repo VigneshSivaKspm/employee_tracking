@@ -124,6 +124,10 @@ export type RootStackParamList = {
   PaymentSuccess: { planName: string; price: number; transactionId: string };
   EngineeringMenu: undefined;
   LeaveDetail: { leaveId: string };
+  Targets: undefined;
+  ServiceRequests: undefined;
+  Calendar: undefined;
+  Sales: undefined;
 };
 
 export type BottomTabParamList = {

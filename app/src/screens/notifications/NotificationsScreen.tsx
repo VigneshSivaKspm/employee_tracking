@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,78 +11,69 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import {
+  collection, query, where, orderBy, onSnapshot, updateDoc, doc, writeBatch,
+} from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { useAuth } from '../../context/AuthContext';
 
 interface NotificationItem {
   id: string;
   title: string;
   body: string;
-  time: string;
+  time?: string;
+  createdAt?: any;
   type: 'leave' | 'announcement' | 'salary' | 'attendance' | 'general';
   isRead: boolean;
+  userId?: string;
 }
 
-const NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: '1',
-    title: 'Team Meeting Tomorrow',
-    body: "Don't forget the team meeting at 11:00 AM in Conference Room.",
-    time: '2h ago',
-    type: 'announcement',
-    isRead: false,
-  },
-  {
-    id: '2',
-    title: 'Leave Approved',
-    body: 'Your leave has been approved by John Manager.',
-    time: '5h ago',
-    type: 'leave',
-    isRead: false,
-  },
-  {
-    id: '3',
-    title: 'New Announcement',
-    body: 'Company picnic on 30th June. Check details now.',
-    time: '1d ago',
-    type: 'announcement',
-    isRead: true,
-  },
-  {
-    id: '4',
-    title: 'Salary Slip',
-    body: 'Your salary slip for June is now available.',
-    time: '2d ago',
-    type: 'salary',
-    isRead: true,
-  },
-  {
-    id: '5',
-    title: 'Attendance Reminder',
-    body: 'You have not punched in yet today. Please mark your attendance.',
-    time: '3d ago',
-    type: 'attendance',
-    isRead: true,
-  },
-];
-
 const TYPE_CONFIG: Record<string, { icon: string; bg: string; color: string }> = {
-  leave:        { icon: 'calendar-outline',      bg: '#DCFCE7', color: '#16A34A' },
-  announcement: { icon: 'megaphone-outline',     bg: '#EFF6FF', color: '#2563EB' },
-  salary:       { icon: 'card-outline',          bg: '#EDE9FE', color: '#7C3AED' },
-  attendance:   { icon: 'time-outline',          bg: '#FEF3C7', color: '#D97706' },
+  leave:        { icon: 'calendar-outline',           bg: '#DCFCE7', color: '#16A34A' },
+  announcement: { icon: 'megaphone-outline',          bg: '#EFF6FF', color: '#2563EB' },
+  salary:       { icon: 'card-outline',               bg: '#EDE9FE', color: '#7C3AED' },
+  attendance:   { icon: 'time-outline',               bg: '#FEF3C7', color: '#D97706' },
   general:      { icon: 'information-circle-outline', bg: '#F1F5F9', color: '#64748B' },
 };
+
+function getTimeAgo(date: Date): string {
+  const diff = Date.now() - date.getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const [notifications, setNotifications] = useState(NOTIFICATIONS);
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  function markAllRead() {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  useEffect(() => {
+    if (!user?.id) return;
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', 'in', [user.id, 'all']),
+      orderBy('createdAt', 'desc'),
+    );
+    const unsub = onSnapshot(q, snap => {
+      setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() } as NotificationItem)));
+    });
+    return unsub;
+  }, [user?.id]);
+
+  async function markRead(id: string) {
+    await updateDoc(doc(db, 'notifications', id), { isRead: true });
   }
 
-  function markRead(id: string) {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  async function markAllRead() {
+    const batch = writeBatch(db);
+    notifications.filter(n => !n.isRead).forEach(n => {
+      batch.update(doc(db, 'notifications', n.id), { isRead: true });
+    });
+    await batch.commit();
   }
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -91,7 +82,6 @@ export default function NotificationsScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Header */}
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
@@ -121,6 +111,9 @@ export default function NotificationsScreen() {
       >
         {notifications.map((item) => {
           const config = TYPE_CONFIG[item.type] ?? TYPE_CONFIG.general;
+          const timeStr = item.createdAt?.toDate
+            ? getTimeAgo(item.createdAt.toDate())
+            : (item.time ?? '');
           return (
             <TouchableOpacity
               key={item.id}
@@ -137,7 +130,7 @@ export default function NotificationsScreen() {
                   {!item.isRead && <View style={styles.unreadDot} />}
                 </View>
                 <Text style={styles.notifBody} numberOfLines={2}>{item.body}</Text>
-                <Text style={styles.notifTime}>{item.time}</Text>
+                <Text style={styles.notifTime}>{timeStr}</Text>
               </View>
             </TouchableOpacity>
           );
@@ -159,19 +152,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9' },
   header: { paddingBottom: 16 },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', paddingHorizontal: 16,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  headerCenter: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 8,
+  },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
   unreadBadge: {
-    backgroundColor: '#FEE2E2',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
+    backgroundColor: '#FEE2E2', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2,
   },
   unreadBadgeText: { fontSize: 11, fontWeight: '700', color: '#DC2626' },
   markReadBtn: { width: 80, alignItems: 'flex-end' },
@@ -179,38 +170,30 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   scrollContent: { padding: 16, gap: 10 },
   notifCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 14,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
   unreadCard: {
-    backgroundColor: '#F0F7FF',
-    borderLeftWidth: 3,
-    borderLeftColor: '#2563EB',
+    backgroundColor: '#F0F7FF', borderLeftWidth: 3, borderLeftColor: '#2563EB',
   },
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   notifContent: { flex: 1 },
-  notifTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  notifTitleRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 4,
+  },
   notifTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B', flex: 1 },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB', marginLeft: 8 },
   notifBody: { fontSize: 13, color: '#64748B', lineHeight: 19, marginBottom: 6 },
   notifTime: { fontSize: 11, color: '#94A3B8' },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  emptyState: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 80,
+  },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginTop: 16 },
   emptySubtitle: { fontSize: 14, color: '#94A3B8', marginTop: 6 },
 });

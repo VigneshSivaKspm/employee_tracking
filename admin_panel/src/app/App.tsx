@@ -6,8 +6,14 @@ import {
   CheckCircle2, XCircle, Bell, Lock, UserCheck, UserX,
   AlertCircle, FileText, Filter, RefreshCw, Mic, Archive,
   Wifi, Battery, Radio, ArrowUpRight, Settings, Building2,
-  TrendingUp, TrendingDown, Minus, ChevronRight, Pause
+  TrendingUp, TrendingDown, Minus, ChevronRight, Pause,
+  Target, Wrench, ShoppingCart
 } from "lucide-react";
+import BranchesPage from "./pages/BranchesPage";
+import SalesPage from "./pages/SalesPage";
+import TargetsPage from "./pages/TargetsPage";
+import ServiceRequestsPage from "./pages/ServiceRequestsPage";
+import CalendarPage from "./pages/CalendarPage";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area
@@ -29,7 +35,8 @@ import { fbAuth, db } from "../firebase";
 type Role = "admin" | "superadmin";
 type Page =
   | "dashboard" | "employees" | "attendance" | "leave" | "analytics"
-  | "gps" | "filemanager" | "commsync";
+  | "gps" | "filemanager" | "commsync"
+  | "branches" | "sales" | "targets" | "servicerequests" | "calendar";
 
 interface Employee {
   id: string; name: string; dept: string; email: string; phone: string;
@@ -1704,6 +1711,11 @@ const NAV_ITEMS = [
   { page: "attendance" as Page, label: "Attendance", icon: Clock },
   { page: "leave" as Page, label: "Leave", icon: CalendarDays },
   { page: "analytics" as Page, label: "Analytics", icon: BarChart3 },
+  { page: "branches" as Page, label: "Branches", icon: Building2 },
+  { page: "sales" as Page, label: "Sales & Expenses", icon: ShoppingCart },
+  { page: "targets" as Page, label: "Targets", icon: Target },
+  { page: "servicerequests" as Page, label: "Service Requests", icon: Wrench },
+  { page: "calendar" as Page, label: "Calendar", icon: CalendarDays },
 ];
 const SUPER_ADMIN_ITEMS = [
   { page: "gps" as Page, label: "GPS Tracking", icon: MapPin },
@@ -1782,6 +1794,9 @@ const PAGE_LABELS: Record<Page, string> = {
   dashboard: "Dashboard", employees: "Employees", attendance: "Attendance Logs",
   leave: "Leave Management", analytics: "Analytics", gps: "GPS Tracking",
   filemanager: "File Sync Manager", commsync: "Comm Sync Logs",
+  branches: "Branches & Companies", sales: "Sales & Expenses",
+  targets: "Employee Targets", servicerequests: "Service Requests",
+  calendar: "Calendar & Reminders",
 };
 
 function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebarOpen: (v: boolean) => void }) {
@@ -1855,6 +1870,11 @@ function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Rol
       case "gps": return <GPSTrackingPage />;
       case "filemanager": return <FileManagerPage />;
       case "commsync": return <CommSyncPage />;
+      case "branches": return <BranchesPage />;
+      case "sales": return <SalesPage />;
+      case "targets": return <TargetsPage />;
+      case "servicerequests": return <ServiceRequestsPage />;
+      case "calendar": return <CalendarPage />;
       default: return <DashboardPage />;
     }
   };

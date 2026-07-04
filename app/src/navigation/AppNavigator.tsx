@@ -41,6 +41,10 @@ import PaymentMethodScreen from '../screens/payment/PaymentMethodScreen';
 import PaymentGatewayScreen from '../screens/payment/PaymentGatewayScreen';
 import PaymentSuccessScreen from '../screens/payment/PaymentSuccessScreen';
 import EngineeringMenuScreen from '../screens/engineering/EngineeringMenuScreen';
+import TargetsScreen from '../screens/targets/TargetsScreen';
+import ServiceRequestScreen from '../screens/service/ServiceRequestScreen';
+import CalendarScreen from '../screens/calendar/CalendarScreen';
+import SalesScreen from '../screens/sales/SalesScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<BottomTabParamList>();
@@ -191,6 +195,28 @@ function AuthenticatedNavigator() {
         <Stack.Screen
           name="EngineeringMenu"
           component={EngineeringMenuScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+
+        {/* New feature screens */}
+        <Stack.Screen
+          name="Targets"
+          component={TargetsScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="ServiceRequests"
+          component={ServiceRequestScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Calendar"
+          component={CalendarScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Sales"
+          component={SalesScreen}
           options={{ animation: 'slide_from_right' }}
         />
       </Stack.Navigator>
