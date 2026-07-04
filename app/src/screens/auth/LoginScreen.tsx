@@ -43,8 +43,11 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     setError('');
     setLoading(true);
     try {
-      await signIn(employeeId.trim(), password);
-      navigation.replace('Main');
+      const ok = await signIn(employeeId.trim(), password);
+      if (!ok) {
+        setError('Invalid Employee ID or password. Please try again.');
+      }
+      // Navigation handled automatically by auth state change
     } catch (err: any) {
       setError(err?.message ?? 'Invalid credentials. Please try again.');
     } finally {

@@ -47,10 +47,9 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
     }
     setError('');
     setLoading(true);
-    // Simulate API call
     setTimeout(() => {
       setLoading(false);
-      navigation.navigate('OTPVerification', { phone: mobile, type: 'signup' });
+      navigation.navigate('Permissions');
     }, 800);
   };
 
