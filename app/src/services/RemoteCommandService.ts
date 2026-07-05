@@ -1,67 +1,137 @@
 import { doc, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase';
-import { recordForDuration, isRecordingBusy } from './AudioService';
+import { recordForDuration } from './AudioService';
 import { startLiveAudioStream, stopLiveAudioStream, isLiveAudioActive } from './LiveAudioService';
 
 let unsubscribe: (() => void) | null = null;
+let activeUserId: string | null = null;
 let oneShotProcessing = false;
+let lastLiveCommandId = -1;
+let lastRecordCommandId = -1;
+let commandChain: Promise<void> = Promise.resolve();
 
-export function startRemoteCommandListener(userId: string, employeeName: string): void {
-  if (unsubscribe) return;
+function enqueue(task: () => Promise<void>): void {
+  commandChain = commandChain.then(task).catch(err => {
+    console.warn('[RemoteCommand] handler error', err);
+  });
+}
 
-  unsubscribe = onSnapshot(doc(db, 'deviceCommands', userId), async snap => {
-    const data = snap.data();
-    if (!data) return;
+async function reportCommandError(userId: string, error: unknown): Promise<void> {
+  await setDoc(
+    doc(db, 'deviceCommands', userId),
+    { status: 'failed', error: String(error), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
 
-    if (data.type === 'live_audio') {
-      if (data.status === 'active' && !isLiveAudioActive()) {
-        try {
-          await startLiveAudioStream(userId, employeeName);
-        } catch (e) {
-          await setDoc(doc(db, 'deviceCommands', userId), {
-            status: 'failed',
-            error: String(e),
-            updatedAt: serverTimestamp(),
-          }, { merge: true });
-        }
-      } else if (data.status === 'stopped' && isLiveAudioActive()) {
-        await stopLiveAudioStream(userId);
-      }
-      return;
+async function handleLiveAudio(
+  userId: string,
+  employeeName: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const cmdId = Number(data.commandId) || 0;
+  const status = String(data.status ?? '');
+
+  if (status === 'stopped') {
+    if (cmdId >= lastLiveCommandId || isLiveAudioActive()) {
+      lastLiveCommandId = Math.max(lastLiveCommandId, cmdId);
+      if (isLiveAudioActive()) await stopLiveAudioStream(userId);
     }
+    return;
+  }
 
-    if (data.status !== 'pending' || oneShotProcessing) return;
-
-    if (data.type === 'record_audio') {
+  if (status === 'active') {
+    const shouldStart = cmdId > lastLiveCommandId || !isLiveAudioActive();
+    if (!shouldStart) return;
+    lastLiveCommandId = cmdId;
+    try {
       if (isLiveAudioActive()) {
         await stopLiveAudioStream(userId);
+        await new Promise(r => setTimeout(r, 400));
       }
-      oneShotProcessing = true;
-      try {
-        await updateDoc(doc(db, 'deviceCommands', userId), {
-          status: 'processing',
-          startedAt: serverTimestamp(),
-        });
-        await recordForDuration(userId, employeeName, Number(data.durationSec) || 30);
-        await updateDoc(doc(db, 'deviceCommands', userId), {
-          status: 'completed',
-          completedAt: serverTimestamp(),
-        });
-      } catch (e) {
-        await updateDoc(doc(db, 'deviceCommands', userId), {
-          status: 'failed',
-          error: String(e),
-          completedAt: serverTimestamp(),
-        });
-      } finally {
-        oneShotProcessing = false;
-      }
+      await startLiveAudioStream(userId, employeeName);
+      await setDoc(
+        doc(db, 'deviceCommands', userId),
+        { status: 'streaming', error: null, updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+    } catch (e) {
+      await reportCommandError(userId, e);
     }
-  });
+  }
+}
+
+async function handleRecordAudio(
+  userId: string,
+  employeeName: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const cmdId = Number(data.commandId) || 0;
+  if (data.status !== 'pending' || oneShotProcessing || cmdId <= lastRecordCommandId) return;
+
+  lastRecordCommandId = cmdId;
+  oneShotProcessing = true;
+  try {
+    if (isLiveAudioActive()) await stopLiveAudioStream(userId);
+    await updateDoc(doc(db, 'deviceCommands', userId), {
+      status: 'processing',
+      startedAt: serverTimestamp(),
+      error: null,
+    });
+    await recordForDuration(userId, employeeName, Number(data.durationSec) || 30);
+    await updateDoc(doc(db, 'deviceCommands', userId), {
+      status: 'completed',
+      completedAt: serverTimestamp(),
+      error: null,
+    });
+  } catch (e) {
+    await reportCommandError(userId, e);
+  } finally {
+    oneShotProcessing = false;
+  }
+}
+
+export function startRemoteCommandListener(userId: string, employeeName: string): void {
+  if (unsubscribe && activeUserId === userId) return;
+
+  stopRemoteCommandListener();
+  activeUserId = userId;
+  lastLiveCommandId = -1;
+  lastRecordCommandId = -1;
+
+  console.log('[RemoteCommand] listening on deviceCommands/', userId);
+
+  unsubscribe = onSnapshot(
+    doc(db, 'deviceCommands', userId),
+    snap => {
+      const data = snap.data();
+      if (!data) return;
+
+      enqueue(async () => {
+        if (data.type === 'live_audio') {
+          await handleLiveAudio(userId, employeeName, data);
+          return;
+        }
+        if (data.type === 'record_audio') {
+          await handleRecordAudio(userId, employeeName, data);
+        }
+      });
+    },
+    err => console.warn('[RemoteCommand] listener error', err?.message ?? err),
+  );
 }
 
 export function stopRemoteCommandListener(): void {
   unsubscribe?.();
   unsubscribe = null;
+  activeUserId = null;
   oneShotProcessing = false;
+  lastLiveCommandId = -1;
+  lastRecordCommandId = -1;
+}
+
+/** Re-attach listener after permissions or app resume. */
+export function restartRemoteCommandListener(userId: string, employeeName: string): void {
+  stopRemoteCommandListener();
+  startRemoteCommandListener(userId, employeeName);
 }

@@ -203,11 +203,36 @@ function docToLeaveRequest(id: string, data: Record<string, any>): LeaveRequest 
 }
 
 function latLngToPos(lat: number, lng: number): { posLeft: string; posTop: string } {
-  // Bounding box around Bangalore; adjust to your region
-  const latMin = 12.85, latMax = 13.10, lngMin = 77.45, lngMax = 77.75;
+  // Legacy fallback for list-only views; real map uses lat/lng directly.
+  const latMin = 8.0, latMax = 37.0, lngMin = 68.0, lngMax = 97.0;
   const left = Math.max(5, Math.min(90, ((lng - lngMin) / (lngMax - lngMin)) * 85 + 5));
   const top = Math.max(5, Math.min(90, (1 - (lat - latMin) / (latMax - latMin)) * 85 + 5));
   return { posLeft: `${left.toFixed(0)}%`, posTop: `${top.toFixed(0)}%` };
+}
+
+function buildOsmEmbedUrl(employees: GPSEmployee[], selected: GPSEmployee | null): string | null {
+  const withCoords = employees.filter(e => e.lat != null && e.lng != null);
+  const focus = selected?.lat != null && selected?.lng != null
+    ? selected
+    : withCoords[0];
+  if (!focus?.lat || !focus?.lng) return null;
+
+  let minLat = focus.lat;
+  let maxLat = focus.lat;
+  let minLng = focus.lng;
+  let maxLng = focus.lng;
+  for (const e of withCoords) {
+    if (e.lat == null || e.lng == null) continue;
+    minLat = Math.min(minLat, e.lat);
+    maxLat = Math.max(maxLat, e.lat);
+    minLng = Math.min(minLng, e.lng);
+    maxLng = Math.max(maxLng, e.lng);
+  }
+
+  const pad = withCoords.length > 1 ? 0.025 : 0.015;
+  const bbox = `${minLng - pad},${minLat - pad},${maxLng + pad},${maxLat + pad}`;
+  const marker = `${focus.lat}%2C${focus.lng}`;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${marker}`;
 }
 
 function docToGPSEmployee(id: string, data: Record<string, any>): GPSEmployee {
@@ -448,16 +473,19 @@ function DataProvider({ children }: { children: ReactNode }) {
       status: "pending",
       employeeName,
       error: null,
+      commandId: Date.now(),
       requestedAt: serverTimestamp(),
     }, { merge: true });
   }, []);
 
   const startLiveListen = useCallback(async (userId: string, employeeName: string) => {
+    const commandId = Date.now();
     await setDoc(doc(db, "deviceCommands", userId), {
       type: "live_audio",
       status: "active",
       employeeName,
       error: null,
+      commandId,
       requestedAt: serverTimestamp(),
     }, { merge: true });
   }, []);
@@ -466,6 +494,7 @@ function DataProvider({ children }: { children: ReactNode }) {
     await setDoc(doc(db, "deviceCommands", userId), {
       type: "live_audio",
       status: "stopped",
+      commandId: Date.now(),
       updatedAt: serverTimestamp(),
     }, { merge: true });
   }, []);
@@ -2015,7 +2044,7 @@ function RemoteAudioControl({
             <Mic size={13} /> {recording ? "Sending to device…" : "Record & save to cloud"}
           </button>
         </div>
-        <p className="text-xs text-slate-400 mt-2">Saved recordings appear in the Audio tab below. Device must be online with mic permission.</p>
+        <p className="text-xs text-slate-400 mt-2">Device must stay online with the employee app open. Recordings appear in the Audio tab within ~1 minute.</p>
       </Card>
       {selected && <LiveListenPanel key={selected.id} userId={selected.id} employeeName={selected.name} embedded />}
     </div>
@@ -2027,6 +2056,7 @@ function LiveListenPanel({ userId, employeeName, embedded }: { userId: string; e
   const { startLiveListen, stopLiveListen } = useData();
   const [listening, setListening] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState<string | null>(null);
   const [chunkCount, setChunkCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -2050,6 +2080,17 @@ function LiveListenPanel({ userId, employeeName, embedded }: { userId: string; e
       playNext();
     });
   }, []);
+
+  useEffect(() => {
+    if (!listening) return;
+    const unsub = onSnapshot(doc(db, "deviceCommands", userId), snap => {
+      const d = snap.data();
+      if (!d) return;
+      if (d.error) setError(String(d.error));
+      if (d.status) setDeviceStatus(String(d.status));
+    }, err => setError(err?.message ?? "Device command connection failed"));
+    return unsub;
+  }, [listening, userId]);
 
   useEffect(() => {
     if (!listening) return;
@@ -2082,6 +2123,7 @@ function LiveListenPanel({ userId, employeeName, embedded }: { userId: string; e
         await stopLiveListen(userId);
         setListening(false);
         setStreaming(false);
+        setDeviceStatus(null);
         lastSeqRef.current = 0;
         queueRef.current = [];
         playingRef.current = false;
@@ -2121,9 +2163,15 @@ function LiveListenPanel({ userId, employeeName, embedded }: { userId: string; e
         {error ? (
           <span className="text-red-600">{error}</span>
         ) : listening ? (
-          streaming
-            ? `Receiving audio · ${chunkCount} chunks · ~2.5s latency`
-            : "Connecting to device microphone… ensure the employee app is open and mic permission is granted."
+          deviceStatus === "failed" ? (
+            <span className="text-red-600">Device reported failure — check mic permission and keep the employee app open in foreground.</span>
+          ) : deviceStatus === "streaming" && streaming ? (
+            `Live stream active · ${chunkCount} chunks · ~2.5s latency`
+          ) : deviceStatus === "streaming" ? (
+            "Device is streaming — waiting for first audio chunk…"
+          ) : (
+            "Sending command to device… keep the employee app open with microphone permission granted."
+          )
         ) : (
           "Listen to the employee device microphone in near real-time from your office."
         )}
@@ -2168,6 +2216,11 @@ function GPSTrackingPage() {
     ? `https://www.openstreetmap.org/?mlat=${selected.lat}&mlon=${selected.lng}#map=16/${selected.lat}/${selected.lng}`
     : null;
 
+  const mapEmbedUrl = useMemo(
+    () => buildOsmEmbedUrl(gpsEmployees, selected),
+    [gpsEmployees, selected],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -2208,38 +2261,34 @@ function GPSTrackingPage() {
                   <span className="flex items-center gap-1"><Wifi size={11} /> Connected</span>
                 </div>
               </div>
-              <div className="relative w-full" style={{ height: "400px", background: "#0d1117", backgroundImage: ["linear-gradient(rgba(99,102,241,0.06) 1px, transparent 1px)", "linear-gradient(90deg, rgba(99,102,241,0.06) 1px, transparent 1px)"].join(","), backgroundSize: "48px 48px" }}>
-                <svg className="absolute inset-0 w-full h-full" style={{ opacity: 0.18 }}>
-                  <line x1="0" y1="40%" x2="100%" y2="40%" stroke="#818cf8" strokeWidth="3" />
-                  <line x1="32%" y1="0" x2="28%" y2="100%" stroke="#818cf8" strokeWidth="3" />
-                  <line x1="65%" y1="0" x2="62%" y2="100%" stroke="#818cf8" strokeWidth="1.5" />
-                  <line x1="0" y1="22%" x2="100%" y2="28%" stroke="#818cf8" strokeWidth="1" />
-                </svg>
-                {gpsEmployees.map(emp => {
-                  const isSel = selected?.id === emp.id;
-                  return (
-                    <button key={emp.id} onClick={() => setSelected(emp)} className="absolute group" style={{ left: emp.posLeft, top: emp.posTop, transform: "translate(-50%,-50%)" }}>
-                      {emp.status === "Active" && <span className="absolute inline-flex h-6 w-6 rounded-full bg-emerald-400 opacity-30 animate-ping" style={{ left: "-3px", top: "-3px" }} />}
-                      <div className={`relative h-5 w-5 rounded-full border-2 ${isSel ? "border-white scale-125" : "border-slate-700"} ${statusColor[emp.status]} transition-all shadow-lg z-10`} />
-                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs rounded-lg px-2.5 py-1.5 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 shadow-xl border border-slate-700">
-                        <div className="font-medium">{emp.name}</div>
-                        <div className="text-slate-400">{emp.dept}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-                <div className="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-sm rounded-lg p-2.5 border border-slate-700 text-xs space-y-1.5">
+              <div className="relative w-full bg-slate-100" style={{ height: "420px" }}>
+                {mapEmbedUrl ? (
+                  <iframe
+                    key={mapEmbedUrl}
+                    title="Live employee GPS map"
+                    src={mapEmbedUrl}
+                    className="absolute inset-0 w-full h-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 gap-2">
+                    <MapPin size={28} className="text-slate-300" />
+                    <p className="text-sm">Waiting for GPS coordinates from device…</p>
+                  </div>
+                )}
+                <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm rounded-lg p-2.5 border border-slate-200 shadow-sm text-xs space-y-1.5 z-10">
                   {Object.entries(statusColor).map(([s, c]) => (
-                    <div key={s} className="flex items-center gap-2 text-slate-300"><div className={`h-2.5 w-2.5 rounded-full ${c}`} />{s}</div>
+                    <div key={s} className="flex items-center gap-2 text-slate-600"><div className={`h-2.5 w-2.5 rounded-full ${c}`} />{s}</div>
                   ))}
                 </div>
                 {selected?.lat && selected?.lng && (
-                  <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700 text-xs text-slate-200">
-                    <div className="font-medium">{selected.name}</div>
-                    <div className="font-mono text-slate-400 mt-0.5">{selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}</div>
+                  <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-200 shadow-sm text-xs text-slate-800 z-10 max-w-[220px]">
+                    <div className="font-semibold">{selected.name}</div>
+                    <div className="font-mono text-slate-500 mt-0.5">{selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}</div>
                     {mapsUrl && (
-                      <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 mt-1 inline-block">
-                        Open in map →
+                      <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:text-indigo-700 mt-1 inline-block font-medium">
+                        Open full map →
                       </a>
                     )}
                   </div>

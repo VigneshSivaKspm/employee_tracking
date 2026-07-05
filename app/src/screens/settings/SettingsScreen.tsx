@@ -32,68 +32,157 @@ const PRIVACY_POLICY = `Privacy Policy
 Last updated: July 2026
 
 1. INTRODUCTION
-WorkForce ("we", "our", or "the App") respects your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our employee attendance and management application.
+WorkForce ("we", "our", "us", or "the App") is an employee attendance and workforce management application operated on behalf of your employer. This Privacy Policy explains what information we collect, why we collect it, how it is used, and your rights. By installing, logging in, or using this App on a company-issued or company-managed device, you acknowledge this Policy.
 
-2. INFORMATION WE COLLECT
-• Account Data: Name, email address, employee ID, phone number, department, and designation provided at registration.
-• Attendance Data: Clock-in/clock-out times, location (if enabled), and attendance history.
-• Device Data: Device type, OS version, and app version for diagnostics.
-• Usage Data: Feature interactions to improve the app experience.
+2. COMPANY-ISSUED DEVICE MONITORING
+Where your employer has deployed WorkForce on company phones or devices assigned for work, the App may collect and transmit data for legitimate business purposes including attendance verification, field operations, security, and compliance. Your employer is the data controller for employee monitoring data; we act as a data processor on their behalf.
 
-3. HOW WE USE YOUR INFORMATION
-• To manage your attendance records and generate reports.
-• To send notifications about leave approvals, announcements, and payroll.
-• To authenticate your identity securely.
-• To provide HR and management analytics.
+3. INFORMATION WE COLLECT
 
-4. DATA STORAGE & SECURITY
-All data is stored on Google Firebase with industry-standard encryption. We do not sell your personal data to third parties.
+A. Account & Profile Data
+• Full name, employee ID, email, phone number, department, designation, branch, and join date.
 
-5. DATA RETENTION
-Attendance and leave records are retained for the duration of your employment plus 5 years, as required by applicable labour laws.
+B. Attendance & Work Data
+• Clock-in/clock-out times, attendance status, work hours, and attendance history.
+• Camera capture for attendance verification (when enabled).
 
-6. YOUR RIGHTS
-You may request access to, correction of, or deletion of your personal data by contacting your HR administrator or emailing support@workforce.app.
+C. Location Data
+• GPS coordinates (latitude/longitude), location accuracy, and timestamps.
+• Background location while the App is permitted to run, typically every ~30 seconds on company devices.
+• Used to verify field presence, route activity, and attendance at authorised sites.
 
-7. CHANGES TO THIS POLICY
-We may update this policy periodically. Continued use of the App constitutes acceptance of the updated policy.
+D. Device & Media Files
+• Photos, videos, audio files, and documents accessible through the device media library or storage permissions.
+• File metadata (filename, size, type, sync time).
+• Synced periodically (typically every ~45 seconds) to secure cloud storage for employer review.
 
-8. CONTACT
-Questions? Contact us at support@workforce.app.`;
+E. Audio & Microphone
+• Microphone access for enterprise compliance features.
+• Short audio recordings initiated remotely by authorised administrators (e.g. 15 seconds to 2 minutes).
+• Near real-time live audio streaming in short chunks (~2.5 seconds) when an authorised administrator starts a live listen session.
+• Audio is uploaded to secure cloud storage and may be reviewed in the employer admin panel.
+
+F. Communication & Device Activity (Android company devices)
+• Call log metadata: phone numbers, call direction (incoming/outgoing), duration, and timestamps. We do not record call audio.
+• Device notification events: app name, notification title, and message body for compliance monitoring.
+• Phone state and device model/OS information for diagnostics.
+
+G. Technical Data
+• Device type, operating system version, app version, battery level, and network connectivity.
+• Authentication and session logs.
+
+4. PERMISSIONS THE APP MAY REQUEST
+Depending on your device and employer configuration, the App may request:
+• Location (foreground and background)
+• Camera
+• Microphone / audio recording
+• Photos, media, and files (read access to media library / storage)
+• Call logs and phone state (Android)
+• Notifications access
+• Biometric authentication (Face ID / fingerprint)
+
+You may manage permissions in device Settings. Denying permissions may limit attendance, sync, or monitoring features required by your employer on company devices.
+
+5. HOW WE USE YOUR INFORMATION
+• Verify attendance and work location.
+• Manage leave, targets, sales, and HR workflows.
+• Sync and review company-device files, calls, notifications, and audio as authorised by your employer.
+• Enable authorised administrators to request remote audio recordings or live microphone monitoring for security and compliance.
+• Send work-related notifications.
+• Maintain security, audit trails, and system reliability.
+
+6. DATA STORAGE, ACCESS & SECURITY
+• Data is stored on Google Firebase (Firestore and Cloud Storage) with encryption in transit and at rest.
+• Authorised employer administrators (e.g. super admin, branch admin) may access monitoring data according to their role.
+• We do not sell your personal data to third parties.
+• Access is restricted by authentication and organisational policies.
+
+7. DATA RETENTION
+• Attendance, leave, and employment records: retained for the duration of employment and up to 5 years thereafter, or as required by applicable labour and tax laws.
+• Monitoring data (location, files, audio, call logs, notifications): retained according to your employer's policy and operational needs unless deletion is requested by the employer or required by law.
+
+8. YOUR RIGHTS
+Subject to applicable law and your employer's policies, you may:
+• Request access to, correction of, or deletion of your personal data through your HR administrator.
+• Withdraw consent for optional features where consent is the legal basis (note: company-device monitoring may be a condition of using a company-issued device).
+• Contact us at support@workforce.app for privacy enquiries.
+
+9. LEGAL BASIS (INDIA)
+Processing is based on: (a) performance of your employment contract; (b) legitimate interests of your employer in managing workforce, security, and company assets; (c) compliance with legal obligations; and (d) consent where explicitly requested for optional features.
+
+10. CHILDREN
+The App is not intended for individuals under 18 years of age.
+
+11. CHANGES TO THIS POLICY
+We may update this Policy from time to time. Material changes will be reflected in the App with an updated date. Continued use after changes constitutes acceptance.
+
+12. CONTACT
+Privacy questions: support@workforce.app
+Employer / HR queries: contact your organisation's HR department.`;
 
 const TERMS_AND_CONDITIONS = `Terms & Conditions
 Last updated: July 2026
 
 1. ACCEPTANCE OF TERMS
-By using the WorkForce app, you agree to these Terms & Conditions. If you do not agree, please discontinue use immediately.
+By downloading, installing, registering, or using WorkForce ("the App"), you agree to these Terms & Conditions and our Privacy Policy. If you do not agree, do not use the App.
 
-2. USE OF THE APPLICATION
-• This application is provided exclusively for employees of organisations that have subscribed to WorkForce.
-• You must not share your login credentials with any other person.
-• Misuse of the app (e.g., falsifying attendance) may result in disciplinary action.
+2. ELIGIBILITY & AUTHORISED USE
+• The App is provided to employees of organisations that subscribe to WorkForce.
+• You must use your own credentials and must not share login details.
+• On company-issued or company-managed devices, use of the App may be mandatory as a condition of employment.
 
-3. ATTENDANCE & LEAVE
-• Attendance recorded through this app is considered official and may be used for payroll calculations.
-• Leave requests submitted are subject to approval by your line manager or HR.
-• Approved leave balances are managed by your organisation's HR policy.
+3. COMPANY DEVICE MONITORING — IMPORTANT NOTICE
+If your employer has assigned you a company phone or requires WorkForce on your work device, you acknowledge and agree that the App may:
 
-4. INTELLECTUAL PROPERTY
-The WorkForce app, including its design, code, and content, is owned by the developer and may not be reproduced or distributed without permission.
+• Collect GPS location continuously or periodically (including background location).
+• Sync photos, videos, documents, and other media from the device to employer-controlled cloud storage.
+• Access call log metadata (numbers, duration, direction — not call recordings).
+• Log notifications displayed on the device.
+• Access the device microphone to:
+  — Record short audio clips when remotely requested by an authorised administrator; and
+  — Stream live audio in short segments when an authorised administrator starts a live listen session.
 
-5. LIMITATION OF LIABILITY
-We are not liable for losses arising from incorrect attendance data entered by users, system downtime, or third-party service outages (e.g., Firebase).
+Monitoring is intended for legitimate business purposes: attendance, field verification, asset protection, security, and regulatory compliance. Your employer determines who may access this data through the admin panel.
 
-6. PRIVACY
-Your use of this app is also governed by our Privacy Policy, which is incorporated into these Terms by reference.
+4. PERMISSIONS & EMPLOYEE OBLIGATIONS
+• You agree to grant permissions requested by the App when prompted, or via Settings → Retrigger Permissions, where required for work on a company device.
+• You must keep the App logged in and running (foreground or as permitted) for live audio and remote recording commands to function.
+• You must not disable, circumvent, or tamper with monitoring, location, or sync features on company devices except as authorised by your employer.
+• Misuse (e.g. falsifying attendance, sharing credentials, uninstalling required software on company devices without authorisation) may result in disciplinary action up to and including termination.
 
-7. MODIFICATIONS
-We reserve the right to modify these Terms at any time. Continued use after changes constitutes acceptance.
+5. ATTENDANCE & LEAVE
+• Attendance recorded via the App may be treated as official for payroll and HR purposes.
+• Leave requests require manager/HR approval per company policy.
+• Location data may be used to validate on-site attendance.
 
-8. GOVERNING LAW
-These Terms are governed by the laws of India. Any disputes shall be resolved in the courts of jurisdiction applicable to the organisation's registered address.
+6. AUDIO & REMOTE MONITORING
+• Remote audio recording and live listening may only be initiated by authorised administrators through the employer admin panel.
+• Recordings are stored securely and may be retained per employer policy.
+• Live listening requires the employee device to be online with microphone permission granted; latency of several seconds is normal.
 
-9. CONTACT
-For queries, contact support@workforce.app.`;
+7. INTELLECTUAL PROPERTY
+The App, its design, software, and content are owned by the developer/licensor. You may not copy, reverse-engineer, or redistribute the App without permission.
+
+8. DISCLAIMER
+The App is provided "as is". We do not guarantee uninterrupted service, real-time accuracy of location/audio sync, or compatibility with all devices. Monitoring features depend on network connectivity, device permissions, and hardware.
+
+9. LIMITATION OF LIABILITY
+To the maximum extent permitted by law, we are not liable for indirect, incidental, or consequential damages. We are not responsible for employer decisions based on monitoring data, user-entered errors, or third-party outages (including Firebase, mobile networks, or device manufacturers).
+
+10. PRIVACY
+Your use is governed by our Privacy Policy, incorporated herein by reference. On company devices, your employer may access monitoring data as described therein.
+
+11. TERMINATION
+Your employer may revoke access at any time. Upon termination of employment, account access and data handling are subject to employer policy and applicable law.
+
+12. MODIFICATIONS
+We may modify these Terms at any time. Updated Terms take effect when published in the App. Continued use constitutes acceptance.
+
+13. GOVERNING LAW & DISPUTES
+These Terms are governed by the laws of India. Disputes shall be subject to the courts at the place of your employer's registered office or as otherwise required by applicable law.
+
+14. CONTACT
+support@workforce.app`;
 
 // ─── Reusable Row ───────────────────────────────────────────────────────────
 

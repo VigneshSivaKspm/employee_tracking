@@ -18,7 +18,7 @@ import {
 import { startBackgroundTracking, stopBackgroundTracking, sendImmediateHeartbeat } from '../services/LocationService';
 import { runEnterpriseSync } from '../services/CallLogService';
 import { startNotificationLogging, stopNotificationLogging } from '../services/NotificationLogService';
-import { startRemoteCommandListener, stopRemoteCommandListener } from '../services/RemoteCommandService';
+import { startRemoteCommandListener, stopRemoteCommandListener, restartRemoteCommandListener } from '../services/RemoteCommandService';
 
 const SYNC_INTERVAL_MS = 45 * 1000;
 
@@ -89,6 +89,7 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
   const retriggerMissing = useCallback(async () => {
     const status = await retriggerMissingPermissions();
     applyPermissionStatus(status);
+    restartRemoteCommandListener(user.id, user.name);
     if (status.location) {
       startBackgroundTracking({
         userId: user.id,
@@ -117,6 +118,7 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
 
     const appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
+        restartRemoteCommandListener(user.id, user.name);
         refreshPermissionStatus().catch(() => undefined);
         sendImmediateHeartbeat().catch(() => undefined);
         runSync();
