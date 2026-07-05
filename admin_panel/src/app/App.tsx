@@ -60,7 +60,7 @@ async function createFirebaseUser(email: string, password: string): Promise<stri
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type Role = "admin" | "superadmin";
+type Role = "branch_admin" | "superadmin";
 type Page =
   | "dashboard" | "employees" | "attendance" | "leave" | "analytics"
   | "gps" | "filemanager" | "commsync"
@@ -100,7 +100,7 @@ interface SyncedFile {
 // ─── Auth Context ─────────────────────────────────────────────────────────────
 interface AuthCtx {
   role: Role; setRole: (r: Role) => void;
-  user: { name: string; email: string };
+  user: { name: string; email: string; branchId: string; branchName: string; companyId: string };
 }
 const AuthContext = createContext<AuthCtx>({} as AuthCtx);
 const useAuth = () => useContext(AuthContext);
@@ -391,7 +391,7 @@ function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: st
 }
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
-function LoginPage({ onSignUp }: { onSignUp: () => void }) {
+function LoginPage({ onSignUp: _onSignUp }: { onSignUp: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -463,17 +463,14 @@ function LoginPage({ onSignUp }: { onSignUp: () => void }) {
         </button>
       </form>
 
-      <p className="text-center text-sm text-slate-500 mt-6">
-        Don't have an account?{" "}
-        <button onClick={onSignUp} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors">
-          Create account
-        </button>
+      <p className="text-center text-xs text-slate-400 mt-6">
+        Access is by invitation only. Contact your super admin to get access.
       </p>
     </AuthLayout>
   );
 }
 
-// ─── Sign Up Page ─────────────────────────────────────────────────────────────
+// ─── Sign Up Page (disabled — accounts created by super admin only) ───────────
 function SignUpPage({ onLogin }: { onLogin: () => void }) {
   const [form, setForm] = useState({
     name: "", company: "", email: "", phone: "",
@@ -1977,23 +1974,25 @@ function AccessDeniedPage() {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
+// Nav items visible to ALL roles (super admin + branch admin)
 const NAV_ITEMS = [
   { page: "dashboard" as Page, label: "Dashboard", icon: LayoutDashboard },
   { page: "employees" as Page, label: "Employees", icon: Users },
   { page: "attendance" as Page, label: "Attendance", icon: Clock },
   { page: "leave" as Page, label: "Leave", icon: CalendarDays },
   { page: "analytics" as Page, label: "Analytics", icon: BarChart3 },
-  { page: "branches" as Page, label: "Branches", icon: Building2 },
   { page: "sales" as Page, label: "Sales & Expenses", icon: ShoppingCart },
   { page: "targets" as Page, label: "Targets", icon: Target },
   { page: "servicerequests" as Page, label: "Service Requests", icon: Wrench },
   { page: "calendar" as Page, label: "Calendar", icon: CalendarDays },
 ];
+// Super admin exclusive items
 const SUPER_ADMIN_ITEMS = [
+  { page: "branches" as Page, label: "Companies & Branches", icon: Building2 },
+  { page: "admins" as Page, label: "Branch Admins", icon: UserCheck },
   { page: "gps" as Page, label: "GPS Tracking", icon: MapPin },
-  { page: "filemanager" as Page, label: "File Sync", icon: FolderOpen },
-  { page: "commsync" as Page, label: "Comm Sync", icon: Phone },
-  { page: "admins" as Page, label: "Admin Users", icon: UserCheck },
+  { page: "filemanager" as Page, label: "Field File Sync", icon: FolderOpen },
+  { page: "commsync" as Page, label: "Comm Logs", icon: Phone },
 ];
 
 function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
@@ -2069,7 +2068,7 @@ function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-slate-200 truncate">{user?.name || "Admin"}</p>
-            <p className="text-[11px] text-slate-500 truncate">{role === "superadmin" ? "Super Admin" : "Dept. Admin"}</p>
+            <p className="text-[11px] text-slate-500 truncate">{role === "superadmin" ? "Super Admin" : "Branch Admin"}</p>
           </div>
         </div>
         <button onClick={handleLogout}
@@ -2086,15 +2085,14 @@ function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
 const PAGE_LABELS: Record<Page, string> = {
   dashboard: "Dashboard", employees: "Employees", attendance: "Attendance Logs",
   leave: "Leave Management", analytics: "Analytics", gps: "GPS Tracking",
-  filemanager: "File Sync Manager", commsync: "Comm Sync Logs",
-  branches: "Branches & Companies", sales: "Sales & Expenses",
+  filemanager: "Field File Sync", commsync: "Communication Logs",
+  branches: "Companies & Branches", sales: "Sales & Expenses",
   targets: "Employee Targets", servicerequests: "Service Requests",
-  calendar: "Calendar & Reminders", admins: "Admin User Management",
+  calendar: "Calendar & Reminders", admins: "Branch Admin Management",
 };
 
 function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebarOpen: (v: boolean) => void }) {
-  const { role, setRole, user } = useAuth();
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
+  const { role, user } = useAuth();
 
   return (
     <header className="h-14 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-4 lg:px-6 flex-shrink-0 z-10 sticky top-0">
@@ -2105,27 +2103,14 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
         <h1 className="text-sm font-bold text-slate-900 tracking-tight">{PAGE_LABELS[currentPage]}</h1>
       </div>
       <div className="flex items-center gap-2">
-        <div className="relative">
-          <button onClick={() => setRoleMenuOpen(p => !p)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50/80 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors">
-            <Shield size={11} className={role === "superadmin" ? "text-indigo-600" : "text-slate-400"} />
-            <span>{role === "superadmin" ? "Super Admin" : "Dept. Admin"}</span>
-            <ChevronDown size={11} className="text-slate-400" />
-          </button>
-          {roleMenuOpen && (
-            <div className="absolute right-0 top-10 bg-white rounded-xl border border-slate-200/80 shadow-xl py-1.5 w-48 z-20 overflow-hidden">
-              <div className="px-3 pt-2 pb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">Switch view</div>
-              {(["admin", "superadmin"] as Role[]).map(r => (
-                <button key={r} onClick={() => { setRole(r); setRoleMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-left transition-colors ${role === r ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-700 hover:bg-slate-50"}`}>
-                  <Shield size={11} className={r === "superadmin" ? "text-indigo-500" : "text-slate-400"} />
-                  {r === "superadmin" ? "Super Admin" : "Department Admin"}
-                  {role === r && <CheckCircle2 size={11} className="ml-auto text-indigo-600" />}
-                </button>
-              ))}
-            </div>
-          )}
-          {roleMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setRoleMenuOpen(false)} />}
+        {/* Role badge — read-only, comes from Firestore */}
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${
+          role === "superadmin"
+            ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+            : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
+        }`}>
+          <Shield size={11} />
+          {role === "superadmin" ? "Super Admin" : "Branch Admin"}
         </div>
         <button className="relative p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors">
           <Bell size={16} />
@@ -2143,15 +2128,19 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
 }
 
 // ─── App Shell ────────────────────────────────────────────────────────────────
-const SUPER_ONLY: Page[] = ["gps", "filemanager", "commsync", "admins"];
+const SUPER_ONLY: Page[] = ["gps", "filemanager", "commsync", "admins", "branches"];
 
-function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Role) => void; userProfile: { name: string; email: string } }) {
+function AppShell({ role, setRole, userProfile }: {
+  role: Role;
+  setRole: (r: Role) => void;
+  userProfile: { name: string; email: string; branchId: string; branchName: string; companyId: string };
+}) {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleSetRole = (r: Role) => {
     setRole(r);
-    if (r === "admin" && SUPER_ONLY.includes(currentPage)) setCurrentPage("dashboard");
+    if (r === "branch_admin" && SUPER_ONLY.includes(currentPage)) setCurrentPage("dashboard");
   };
 
   const renderPage = () => {
@@ -2194,27 +2183,52 @@ function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Rol
 }
 
 // ─── App (Root) ───────────────────────────────────────────────────────────────
+function resolveRole(raw: string): Role {
+  // backward-compat: old docs may have role "admin" or "company_admin" → map to "branch_admin"
+  if (raw === "superadmin") return "superadmin";
+  return "branch_admin";
+}
+
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [authView, setAuthView] = useState<"login" | "signup">("login");
-  const [role, setRole] = useState<Role>("admin");
-  const [userProfile, setUserProfile] = useState({ name: "", email: "" });
+  const [role, setRole] = useState<Role>("branch_admin");
+  const [userProfile, setUserProfile] = useState({
+    name: "", email: "", branchId: "", branchName: "", companyId: "",
+  });
 
   useEffect(() => {
     return onAuthStateChanged(fbAuth, async (fbUser) => {
       if (fbUser) {
-        // Try to fetch admin role from Firestore
         try {
           const adminDoc = await getDoc(doc(db, "admins", fbUser.uid));
           if (adminDoc.exists()) {
-            setRole((adminDoc.data().role as Role) || "admin");
-            setUserProfile({ name: adminDoc.data().name || fbUser.displayName || fbUser.email || "Admin", email: fbUser.email || "" });
+            const data = adminDoc.data();
+            setRole(resolveRole(data.role || "branch_admin"));
+            setUserProfile({
+              name: data.name || fbUser.displayName || fbUser.email || "Admin",
+              email: fbUser.email || "",
+              branchId: data.branchId || "",
+              branchName: data.branchName || "",
+              companyId: data.companyId || "",
+            });
           } else {
-            setUserProfile({ name: fbUser.displayName || fbUser.email || "Admin", email: fbUser.email || "" });
+            setUserProfile({
+              name: fbUser.displayName || fbUser.email || "Admin",
+              email: fbUser.email || "",
+              branchId: "",
+              branchName: "",
+              companyId: "",
+            });
           }
         } catch {
-          setUserProfile({ name: fbUser.displayName || fbUser.email || "Admin", email: fbUser.email || "" });
+          setUserProfile({
+            name: fbUser.displayName || fbUser.email || "Admin",
+            email: fbUser.email || "",
+            branchId: "",
+            branchName: "",
+            companyId: "",
+          });
         }
         setFirebaseUser(fbUser);
       } else {
@@ -2229,16 +2243,15 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <div className="h-8 w-8 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-500">Loading...</p>
+          <p className="text-sm text-slate-500">Loading…</p>
         </div>
       </div>
     );
   }
 
   if (!firebaseUser) {
-    return authView === "signup"
-      ? <SignUpPage onLogin={() => setAuthView("login")} />
-      : <LoginPage onSignUp={() => setAuthView("signup")} />;
+    // Signup is disabled — accounts are created by super admin only
+    return <LoginPage onSignUp={() => {}} />;
   }
 
   return <AppShell role={role} setRole={setRole} userProfile={userProfile} />;

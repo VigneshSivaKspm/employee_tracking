@@ -63,10 +63,6 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  const handleBiometric = () => {
-    // Biometric auth placeholder
-  };
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
       <StatusBar style="light" />
@@ -190,30 +186,10 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Biometric Button */}
-            <TouchableOpacity
-              style={styles.biometricButton}
-              onPress={handleBiometric}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="finger-print" size={22} color="#2563EB" />
-              <Text style={styles.biometricText}>Use Biometrics</Text>
-            </TouchableOpacity>
-
-            {/* Sign Up Link */}
-            <View style={styles.signupRow}>
-              <Text style={styles.signupPrompt}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-                <Text style={styles.signupLink}>Sign Up</Text>
-              </TouchableOpacity>
-            </View>
+            {/* Access note */}
+            <Text style={styles.accessNote}>
+              Access is provided by your branch admin. Contact them to get your login credentials.
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -420,36 +396,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  biometricButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
-    gap: 10,
-  },
-  biometricText: {
-    fontSize: 15,
-    color: '#2563EB',
-    fontWeight: '700',
-  },
-  signupRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  accessNote: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
     marginTop: 28,
-  },
-  signupPrompt: {
-    fontSize: 14,
-    color: '#64748B',
-  },
-  signupLink: {
-    fontSize: 14,
-    color: '#2563EB',
-    fontWeight: '800',
+    lineHeight: 18,
   },
 });
 

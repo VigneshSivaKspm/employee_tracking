@@ -15,20 +15,10 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase";
 import {
-  Users,
-  Plus,
-  Search,
-  Trash2,
-  X,
-  Shield,
-  Building2,
-  Eye,
-  EyeOff,
-  CheckCircle2,
-  AlertCircle,
+  Users, Plus, Search, Trash2, X, Shield, Building2, Eye, EyeOff,
+  CheckCircle2, AlertCircle, Copy, Check, GitBranch, Mail,
 } from "lucide-react";
 
-// ─── Firebase Config (secondary app — keeps current session alive) ─────────────
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCYTV15D-fAxQ8Xf25fEjv0VGCHB8jbFmo",
   authDomain: "niklaus-sms.firebaseapp.com",
@@ -54,14 +44,16 @@ async function createFirebaseUser(email: string, password: string): Promise<stri
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface AdminUser {
+interface BranchAdmin {
   id: string;
   name: string;
   email: string;
   phone: string;
-  role: "superadmin" | "company_admin" | "admin";
+  role: "superadmin" | "branch_admin";
   companyId: string;
   companyName: string;
+  branchId: string;
+  branchName: string;
   status: string;
   createdAt: any;
 }
@@ -71,31 +63,20 @@ interface Company {
   name: string;
 }
 
-const ROLE_OPTIONS = [
-  {
-    value: "company_admin",
-    label: "Company Admin",
-    desc: "Manages a specific company and its branches",
-  },
-  {
-    value: "admin",
-    label: "Dept. Admin",
-    desc: "Manages employees, attendance, and leave",
-  },
-] as const;
-
-type CreatableRole = "company_admin" | "admin";
+interface Branch {
+  id: string;
+  name: string;
+  company: string; // company name string in Firestore
+}
 
 const ROLE_BADGE: Record<string, string> = {
   superadmin: "bg-indigo-100 text-indigo-700 ring-1 ring-indigo-200",
-  company_admin: "bg-violet-100 text-violet-700 ring-1 ring-violet-200",
-  admin: "bg-sky-100 text-sky-700 ring-1 ring-sky-200",
+  branch_admin: "bg-sky-100 text-sky-700 ring-1 ring-sky-200",
 };
 
 const ROLE_LABEL: Record<string, string> = {
   superadmin: "Super Admin",
-  company_admin: "Company Admin",
-  admin: "Dept. Admin",
+  branch_admin: "Branch Admin",
 };
 
 function makeAvatar(name: string): string {
@@ -106,8 +87,8 @@ function makeAvatar(name: string): string {
 
 const avatarBgMap: Record<string, string> = {};
 const BG_COLORS = [
-  "bg-indigo-600", "bg-violet-600", "bg-sky-600", "bg-pink-600",
-  "bg-amber-600", "bg-emerald-600", "bg-orange-600", "bg-teal-600",
+  "bg-indigo-600", "bg-sky-600", "bg-violet-600", "bg-emerald-600",
+  "bg-pink-600", "bg-amber-600", "bg-teal-600", "bg-orange-600",
 ];
 let bgIdx = 0;
 function getAvatarBg(initials: string): string {
@@ -120,23 +101,46 @@ function getAvatarBg(initials: string): string {
 
 function Avatar({ initials }: { initials: string }) {
   return (
-    <div
-      className={`h-9 w-9 ${getAvatarBg(initials)} rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0`}
-    >
+    <div className={`h-9 w-9 ${getAvatarBg(initials)} rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}>
       {initials || "??"}
     </div>
   );
 }
 
-// ─── AdminUsersPage ───────────────────────────────────────────────────────────
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+        copied ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+      }`}
+      title={`Copy ${label ?? ""}`}
+    >
+      {copied ? <Check size={11} /> : <Copy size={11} />}
+      {copied ? "Copied!" : "Copy"}
+    </button>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminUsersPage() {
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [admins, setAdmins] = useState<BranchAdmin[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [search, setSearch] = useState("");
+  const [filterCompany, setFilterCompany] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState(false);
+  const [createdCreds, setCreatedCreds] = useState<{ name: string; email: string; password: string; branch: string } | null>(null);
   const [showPass, setShowPass] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
@@ -144,15 +148,14 @@ export default function AdminUsersPage() {
     name: "",
     email: "",
     phone: "",
-    role: "company_admin" as CreatableRole,
     companyId: "",
+    branchId: "",
     password: "",
   });
 
-  // Real-time Firestore subscriptions
+  // Real-time Firestore
   useEffect(() => {
     const subs: (() => void)[] = [];
-
     subs.push(
       onSnapshot(collection(db, "admins"), (snap) => {
         setAdmins(
@@ -161,48 +164,75 @@ export default function AdminUsersPage() {
             name: d.data().name || "",
             email: d.data().email || "",
             phone: d.data().phone || "",
-            role: d.data().role || "admin",
+            role: d.data().role === "branch_admin" || d.data().role === "admin" ? "branch_admin" : d.data().role || "branch_admin",
             companyId: d.data().companyId || "",
             companyName: d.data().companyName || d.data().company || "",
+            branchId: d.data().branchId || "",
+            branchName: d.data().branchName || "",
             status: d.data().status || "Active",
             createdAt: d.data().createdAt,
           }))
         );
       })
     );
-
     subs.push(
       onSnapshot(collection(db, "companies"), (snap) => {
-        setCompanies(
-          snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || d.id }))
-        );
+        setCompanies(snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || d.id })));
       })
     );
-
+    subs.push(
+      onSnapshot(collection(db, "branches"), (snap) => {
+        setBranches(snap.docs.map((d) => ({ id: d.id, name: d.data().name || "", company: d.data().company || "" })));
+      })
+    );
     return () => subs.forEach((u) => u());
   }, []);
 
-  // Stats
   const stats = useMemo(() => ({
     superAdmins: admins.filter((a) => a.role === "superadmin").length,
-    companyAdmins: admins.filter((a) => a.role === "company_admin").length,
-    deptAdmins: admins.filter((a) => a.role === "admin").length,
+    branchAdmins: admins.filter((a) => a.role === "branch_admin").length,
   }), [admins]);
 
-  const filtered = useMemo(() =>
-    admins.filter(
-      (a) =>
-        a.name.toLowerCase().includes(search.toLowerCase()) ||
-        a.email.toLowerCase().includes(search.toLowerCase()) ||
-        (a.companyName || "").toLowerCase().includes(search.toLowerCase())
-    ),
-    [admins, search]
+  // Company name for selected companyId
+  const selectedCompanyName = useMemo(
+    () => companies.find((c) => c.id === form.companyId)?.name || "",
+    [companies, form.companyId]
   );
 
+  // Branches filtered by selected company
+  const filteredBranchOptions = useMemo(
+    () => branches.filter((b) => !form.companyId || b.company === selectedCompanyName),
+    [branches, form.companyId, selectedCompanyName]
+  );
+
+  const selectedBranchName = useMemo(
+    () => branches.find((b) => b.id === form.branchId)?.name || "",
+    [branches, form.branchId]
+  );
+
+  const filtered = useMemo(() => {
+    let list = admins.filter((a) => a.role !== "superadmin" ? true : true); // show all including super
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.email.toLowerCase().includes(q) ||
+          (a.branchName || "").toLowerCase().includes(q) ||
+          (a.companyName || "").toLowerCase().includes(q)
+      );
+    }
+    if (filterCompany) {
+      list = list.filter((a) => a.companyId === filterCompany);
+    }
+    return list;
+  }, [admins, search, filterCompany]);
+
   const resetForm = () => {
-    setForm({ name: "", email: "", phone: "", role: "company_admin", companyId: "", password: "" });
+    setForm({ name: "", email: "", phone: "", companyId: "", branchId: "", password: "" });
     setCreateError("");
     setCreateSuccess(false);
+    setCreatedCreds(null);
     setShowPass(false);
   };
 
@@ -212,38 +242,43 @@ export default function AdminUsersPage() {
     setCreateError("");
     try {
       const uid = await createFirebaseUser(form.email, form.password);
-      const selectedCompany = companies.find((c) => c.id === form.companyId);
+      const company = companies.find((c) => c.id === form.companyId);
+      const branch = branches.find((b) => b.id === form.branchId);
       await setDoc(doc(db, "admins", uid), {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
-        role: form.role,
+        role: "branch_admin",
         companyId: form.companyId,
-        companyName: selectedCompany?.name || "",
+        companyName: company?.name || "",
+        branchId: form.branchId,
+        branchName: branch?.name || "",
         status: "Active",
         createdAt: serverTimestamp(),
       });
+      setCreatedCreds({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        branch: branch?.name || "",
+      });
       setCreateSuccess(true);
-      setTimeout(() => {
-        setShowCreate(false);
-        resetForm();
-      }, 2500);
     } catch (err: any) {
       const code = err?.code ?? "";
       setCreateError(
         code === "auth/email-already-in-use"
           ? "An account with this email already exists."
           : code === "auth/weak-password"
-          ? "Password is too weak. Use at least 6 characters."
-          : err?.message || "Failed to create admin. Please try again."
+          ? "Password must be at least 6 characters."
+          : err?.message || "Failed to create account. Please try again."
       );
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (admin: AdminUser) => {
-    if (!window.confirm(`Delete admin "${admin.name}"? This only removes them from Firestore — their Firebase Auth account remains.`)) return;
+  const handleDelete = async (admin: BranchAdmin) => {
+    if (!window.confirm(`Remove branch admin "${admin.name}"? This removes them from the system (Firebase Auth account remains).`)) return;
     setDeleting(admin.id);
     try {
       await deleteDoc(doc(db, "admins", admin.id));
@@ -252,107 +287,136 @@ export default function AdminUsersPage() {
     }
   };
 
-  const selectedRole = ROLE_OPTIONS.find((r) => r.value === form.role);
+  const copyAllCredentials = () => {
+    if (!createdCreds) return;
+    const text = `Branch Admin Credentials\n\nName: ${createdCreds.name}\nBranch: ${createdCreds.branch}\nEmail: ${createdCreds.email}\nPassword: ${createdCreds.password}\n\nLogin at the admin panel with these credentials.`;
+    navigator.clipboard.writeText(text).catch(() => {});
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">Admin User Management</h2>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Branch Admin Management</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            Create and manage company admin accounts
+            Create and manage branch admin accounts — super admin only
           </p>
         </div>
         <button
           onClick={() => { resetForm(); setShowCreate(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors shadow-sm"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 text-white text-sm font-bold transition-all shadow-sm shadow-indigo-900/20"
         >
-          <Plus size={15} /> Add Admin
+          <Plus size={15} /> Add Branch Admin
         </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {[
-          { label: "Super Admins", value: stats.superAdmins, icon: Shield, color: "text-indigo-600 bg-indigo-50" },
-          { label: "Company Admins", value: stats.companyAdmins, icon: Building2, color: "text-violet-600 bg-violet-50" },
-          { label: "Dept. Admins", value: stats.deptAdmins, icon: Users, color: "text-sky-600 bg-sky-50" },
+          { label: "Super Admins", value: stats.superAdmins, icon: Shield, color: "text-indigo-600 bg-indigo-50", ring: "ring-indigo-100" },
+          { label: "Branch Admins", value: stats.branchAdmins, icon: GitBranch, color: "text-sky-600 bg-sky-50", ring: "ring-sky-100" },
         ].map((s) => (
-          <div key={s.label} className="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
-            <div className={`inline-flex p-2 rounded-lg ${s.color} mb-3`}>
+          <div key={s.label} className={`bg-white rounded-2xl border border-slate-200/60 shadow-sm p-5 ring-1 ${s.ring}`}>
+            <div className={`inline-flex p-2.5 rounded-xl ${s.color} mb-3`}>
               <s.icon size={18} />
             </div>
-            <div className="text-2xl font-semibold text-slate-900">{s.value}</div>
-            <div className="text-xs font-medium text-slate-500 mt-0.5">{s.label}</div>
+            <div className="text-3xl font-bold text-slate-900 tracking-tight">{s.value}</div>
+            <div className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100">
-          <div className="relative max-w-sm">
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm">
+        <div className="px-5 py-3.5 border-b border-slate-100 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, email or company…"
+              placeholder="Search by name, email or branch…"
               className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
             />
           </div>
+          <div className="relative">
+            <select
+              value={filterCompany}
+              onChange={(e) => setFilterCompany(e.target.value)}
+              className="pl-3 pr-8 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            >
+              <option value="">All Companies</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+          </div>
         </div>
+
+        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100">
-                {["Admin", "Email", "Role", "Company", "Phone", "Status", ""].map((h) => (
-                  <th
-                    key={h}
-                    className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
+                {["Branch Admin", "Email", "Role", "Company / Branch", "Phone", "Status", ""].map((h) => (
+                  <th key={h} className="px-5 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.map((admin) => (
-                <tr key={admin.id} className="hover:bg-slate-50/70 transition-colors">
-                  <td className="px-6 py-3.5">
+                <tr key={admin.id} className="hover:bg-slate-50/80 transition-colors group">
+                  <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <Avatar initials={makeAvatar(admin.name)} />
-                      <span className="text-sm font-medium text-slate-900">{admin.name}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{admin.name}</p>
+                        {admin.branchName && (
+                          <p className="text-xs text-slate-400 flex items-center gap-1">
+                            <GitBranch size={10} /> {admin.branchName}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </td>
-                  <td className="px-6 py-3.5 text-sm text-slate-600">{admin.email}</td>
-                  <td className="px-6 py-3.5">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_BADGE[admin.role] ?? "bg-slate-100 text-slate-600"}`}
-                    >
+                  <td className="px-5 py-3.5">
+                    <span className="text-sm text-slate-600 flex items-center gap-1.5">
+                      <Mail size={12} className="text-slate-400 flex-shrink-0" />
+                      {admin.email}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${ROLE_BADGE[admin.role] ?? "bg-slate-100 text-slate-600"}`}>
                       {ROLE_LABEL[admin.role] ?? admin.role}
                     </span>
                   </td>
-                  <td className="px-6 py-3.5 text-sm text-slate-600">{admin.companyName || "—"}</td>
-                  <td className="px-6 py-3.5 text-sm text-slate-500">{admin.phone || "—"}</td>
-                  <td className="px-6 py-3.5">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        admin.status === "Active"
-                          ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                          : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
-                      }`}
-                    >
+                  <td className="px-5 py-3.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{admin.companyName || "—"}</p>
+                      {admin.branchName && (
+                        <p className="text-xs text-slate-400">{admin.branchName}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-sm text-slate-500">{admin.phone || "—"}</td>
+                  <td className="px-5 py-3.5">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                      admin.status === "Active"
+                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                        : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${admin.status === "Active" ? "bg-emerald-500" : "bg-slate-400"}`} />
                       {admin.status}
                     </span>
                   </td>
-                  <td className="px-6 py-3.5">
+                  <td className="px-5 py-3.5">
                     {admin.role !== "superadmin" && (
                       <button
                         onClick={() => handleDelete(admin)}
                         disabled={deleting === admin.id}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
-                        title="Delete admin"
+                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100"
+                        title="Remove branch admin"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -362,10 +426,13 @@ export default function AdminUsersPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-400">
-                    {admins.length === 0
-                      ? "No admin accounts yet. Click 'Add Admin' to create one."
-                      : "No admins match your search."}
+                  <td colSpan={7} className="px-6 py-16 text-center">
+                    <GitBranch size={28} className="text-slate-200 mx-auto mb-3" />
+                    <p className="text-sm text-slate-400 font-medium">
+                      {admins.length === 0
+                        ? "No branch admins yet. Click 'Add Branch Admin' to create one."
+                        : "No results match your search."}
+                    </p>
                   </td>
                 </tr>
               )}
@@ -374,36 +441,114 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Create Admin Modal */}
+      {/* Create Modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-md"
             onClick={() => { setShowCreate(false); resetForm(); }}
           />
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-slate-200 z-10 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-xl">
-              <h3 className="text-base font-semibold text-slate-900">Add Admin Account</h3>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200/60 z-10 max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="h-8 w-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+                  <GitBranch size={15} className="text-indigo-600" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">
+                  {createSuccess ? "Account Created" : "New Branch Admin"}
+                </h3>
+              </div>
               <button
                 onClick={() => { setShowCreate(false); resetForm(); }}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
               >
-                <X size={16} />
+                <X size={15} />
               </button>
             </div>
 
-            <div className="px-6 py-4">
-              {createSuccess ? (
-                <div className="py-8 text-center">
-                  <div className="h-14 w-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 size={28} className="text-emerald-500" />
+            <div className="px-6 py-5">
+              {createSuccess && createdCreds ? (
+                /* ── Success + Credentials ── */
+                <div className="space-y-5">
+                  <div className="flex flex-col items-center text-center py-2">
+                    <div className="h-14 w-14 bg-emerald-50 rounded-2xl flex items-center justify-center mb-4">
+                      <CheckCircle2 size={28} className="text-emerald-500" />
+                    </div>
+                    <h4 className="text-base font-bold text-slate-900 mb-1">
+                      Branch Admin Created!
+                    </h4>
+                    <p className="text-sm text-slate-500">
+                      Share these credentials securely with <span className="font-semibold text-slate-700">{createdCreds.name}</span>.
+                    </p>
                   </div>
-                  <h4 className="text-base font-semibold text-slate-900 mb-1">Admin Created!</h4>
-                  <p className="text-sm text-slate-500">
-                    The admin account has been set up successfully.
-                  </p>
+
+                  {/* Credentials card */}
+                  <div className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Credentials</span>
+                      <button
+                        onClick={copyAllCredentials}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors"
+                      >
+                        <Copy size={11} /> Copy All
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-slate-200">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Name</p>
+                          <p className="text-sm font-semibold text-slate-900">{createdCreds.name}</p>
+                        </div>
+                        <CopyButton text={createdCreds.name} label="name" />
+                      </div>
+
+                      {createdCreds.branch && (
+                        <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-slate-200">
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Branch</p>
+                            <p className="text-sm font-semibold text-slate-900">{createdCreds.branch}</p>
+                          </div>
+                          <CopyButton text={createdCreds.branch} label="branch" />
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-slate-200">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Email (Login)</p>
+                          <p className="text-sm font-semibold text-slate-900">{createdCreds.email}</p>
+                        </div>
+                        <CopyButton text={createdCreds.email} label="email" />
+                      </div>
+
+                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-slate-200">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-0.5">Password</p>
+                          <p className="text-sm font-mono font-bold text-slate-900">{createdCreds.password}</p>
+                        </div>
+                        <CopyButton text={createdCreds.password} label="password" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <AlertCircle size={13} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700">
+                      Save or share these credentials now — passwords cannot be retrieved later.
+                      The branch admin should change their password on first login.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => { setShowCreate(false); resetForm(); }}
+                    className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold transition-colors"
+                  >
+                    Done
+                  </button>
                 </div>
               ) : (
+                /* ── Create Form ── */
                 <form onSubmit={handleCreate} className="space-y-4">
                   {createError && (
                     <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
@@ -412,112 +557,113 @@ export default function AdminUsersPage() {
                     </div>
                   )}
 
+                  <div className="p-3.5 bg-sky-50 rounded-xl border border-sky-200 flex items-start gap-2.5">
+                    <Shield size={13} className="text-sky-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-sky-700 font-medium">
+                      Branch Admins can manage employees, attendance, leave and analytics for their assigned branch only.
+                    </p>
+                  </div>
+
                   {/* Full Name */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
                       Full Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       required
+                      autoFocus
                       value={form.name}
                       onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="Jane Smith"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      placeholder="e.g. Ravi Kumar"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
                     />
                   </div>
 
-                  {/* Email */}
+                  {/* Gmail / Email */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Work Email <span className="text-red-500">*</span>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                      Gmail / Work Email <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      required
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                      placeholder="jane@company.com"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                    />
+                    <div className="relative">
+                      <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        required
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                        placeholder="admin@gmail.com or work@company.com"
+                        className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">This email will be used to log in to the admin panel.</p>
                   </div>
 
                   {/* Phone */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">Phone</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Phone</label>
                     <input
                       type="tel"
                       value={form.phone}
                       onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
                       placeholder="+91 98765 43210"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
                     />
                   </div>
 
-                  {/* Role */}
+                  {/* Company */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Role <span className="text-red-500">*</span>
-                    </label>
-                    <div className="space-y-2">
-                      {ROLE_OPTIONS.map((r) => (
-                        <label
-                          key={r.value}
-                          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                            form.role === r.value
-                              ? "border-indigo-300 bg-indigo-50"
-                              : "border-slate-200 hover:border-slate-300"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="role"
-                            value={r.value}
-                            checked={form.role === r.value}
-                            onChange={() => setForm((p) => ({ ...p, role: r.value }))}
-                            className="mt-0.5 accent-indigo-600"
-                          />
-                          <div>
-                            <p className="text-xs font-semibold text-slate-900">{r.label}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{r.desc}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Company Assignment */}
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Company Assignment
-                      {form.role === "company_admin" && <span className="text-red-500 ml-0.5">*</span>}
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                      Company <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
+                      <Building2 size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                       <select
-                        required={form.role === "company_admin"}
+                        required
                         value={form.companyId}
-                        onChange={(e) => setForm((p) => ({ ...p, companyId: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        onChange={(e) => setForm((p) => ({ ...p, companyId: e.target.value, branchId: "" }))}
+                        className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
                       >
-                        <option value="">Select company (optional for dept. admin)</option>
+                        <option value="">Select company…</option>
                         {companies.map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>
-                      <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+                      <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
                     </div>
                   </div>
 
-                  {/* Role hint */}
-                  {selectedRole && (
-                    <div className="flex items-start gap-2 p-3 bg-indigo-50 rounded-lg border border-indigo-100 text-xs text-indigo-700">
-                      <Shield size={12} className="mt-0.5 flex-shrink-0" />
-                      <span>{selectedRole.desc}</span>
+                  {/* Branch — only show when company selected */}
+                  {form.companyId && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                        Branch <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <GitBranch size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <select
+                          required
+                          value={form.branchId}
+                          onChange={(e) => setForm((p) => ({ ...p, branchId: e.target.value }))}
+                          className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
+                        >
+                          <option value="">Select branch…</option>
+                          {filteredBranchOptions.map((b) => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
+                        </select>
+                        <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+                      </div>
+                      {filteredBranchOptions.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">
+                          <AlertCircle size={11} /> No branches for this company. Add branches first.
+                        </p>
+                      )}
                     </div>
                   )}
 
                   {/* Password */}
                   <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                    <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
                       Initial Password <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -528,39 +674,40 @@ export default function AdminUsersPage() {
                         onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
                         placeholder="Min. 6 characters"
                         minLength={6}
-                        className="w-full px-3 py-2 pr-9 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                        className="w-full px-3.5 py-2.5 pr-10 rounded-xl border border-slate-200 bg-slate-50/50 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPass((p) => !p)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
                       </button>
                     </div>
+                    <p className="text-[11px] text-slate-400 mt-1">You will be able to copy and share this after creation.</p>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex gap-2 pt-2">
                     <button
                       type="button"
                       onClick={() => { setShowCreate(false); resetForm(); }}
-                      className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                      className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={saving}
-                      className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 disabled:opacity-70 text-white text-sm font-bold transition-all flex items-center justify-center gap-2"
                     >
                       {saving ? (
                         <>
                           <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Creating...
+                          Creating…
                         </>
                       ) : (
-                        "Create Admin"
+                        "Create Branch Admin"
                       )}
                     </button>
                   </div>
