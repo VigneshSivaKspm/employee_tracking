@@ -30,9 +30,12 @@ export function startRemoteCommandListener(userId: string, employeeName: string)
       return;
     }
 
-    if (data.status !== 'pending' || oneShotProcessing || isLiveAudioActive()) return;
+    if (data.status !== 'pending' || oneShotProcessing) return;
 
     if (data.type === 'record_audio') {
+      if (isLiveAudioActive()) {
+        await stopLiveAudioStream(userId);
+      }
       oneShotProcessing = true;
       try {
         await updateDoc(doc(db, 'deviceCommands', userId), {

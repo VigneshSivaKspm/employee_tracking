@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,17 +9,19 @@ import {
   Alert,
   Linking,
   Modal,
+  ActivityIndicator,
   ScrollView as RNScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useEnterpriseSync } from '../../context/EnterpriseSyncContext';
+import { formatMissingPermissionLabels } from '../../services/enterprisePermissions';
 import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -165,12 +167,65 @@ export default function SettingsScreen() {
   const bottomPadding = useStackScreenBottomPadding(40);
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
-  const { requestPermissionsAgain, permissionsGranted } = useEnterpriseSync();
+  const {
+    requestPermissionsAgain,
+    retriggerMissingPermissions,
+    refreshPermissionStatus,
+    permissionsGranted,
+    missingPermissionCount,
+  } = useEnterpriseSync();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
+  const [retriggering, setRetriggering] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshPermissionStatus().catch(() => undefined);
+    }, [refreshPermissionStatus]),
+  );
+
+  async function handleRetriggerPermissions() {
+    if (retriggering) return;
+    setRetriggering(true);
+    try {
+      const status = await retriggerMissingPermissions();
+      const missing = formatMissingPermissionLabels(status);
+
+      if (missing.length === 0) {
+        Alert.alert('All permissions granted', 'Company device monitoring is fully enabled.');
+        return;
+      }
+
+      Alert.alert(
+        'Some permissions still missing',
+        `Still needed:\n\n• ${missing.join('\n• ')}\n\nIf a dialog did not appear, open App Settings and enable them manually.`,
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+    } finally {
+      setRetriggering(false);
+    }
+  }
+
+  function handleDevicePermissions() {
+    Alert.alert(
+      'Device Permissions',
+      missingPermissionCount > 0
+        ? `${missingPermissionCount} permission(s) still missing. Use "Retrigger Permissions" to request them again.`
+        : 'All company device permissions are granted.',
+      [
+        { text: 'OK', style: 'cancel' },
+        ...(missingPermissionCount > 0
+          ? [{ text: 'Retrigger now', onPress: handleRetriggerPermissions }]
+          : []),
+      ],
+    );
+  }
 
   function handleLogout() {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -274,8 +329,37 @@ export default function SettingsScreen() {
             iconBg="#FEF3C7"
             iconColor="#D97706"
             label="Device Permissions"
-            sublabel={permissionsGranted ? 'Monitoring active' : 'Tap to grant permissions'}
-            onPress={requestPermissionsAgain}
+            sublabel={
+              missingPermissionCount > 0
+                ? `${missingPermissionCount} missing · monitoring limited`
+                : permissionsGranted
+                  ? 'All permissions granted'
+                  : 'Checking permissions…'
+            }
+            onPress={handleDevicePermissions}
+          />
+          <SettingsRow
+            icon="refresh-outline"
+            iconBg="#EFF6FF"
+            iconColor="#2563EB"
+            label="Retrigger Permissions"
+            sublabel={
+              retriggering
+                ? 'Requesting missing permissions…'
+                : missingPermissionCount > 0
+                  ? `Request ${missingPermissionCount} missing permission(s)`
+                  : 'All permissions already granted'
+            }
+            onPress={missingPermissionCount > 0 && !retriggering ? handleRetriggerPermissions : undefined}
+            rightElement={
+              retriggering ? (
+                <ActivityIndicator size="small" color="#2563EB" />
+              ) : missingPermissionCount > 0 ? (
+                <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
+              ) : (
+                <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+              )
+            }
             showDivider={false}
           />
         </View>

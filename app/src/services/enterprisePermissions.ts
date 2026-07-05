@@ -1,7 +1,7 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
-import { getNotifications, requestMediaLibraryPermission, isExpoGo } from './nativeModules';
+import { getNotifications, requestMediaLibraryPermission, isExpoGo, hasMediaLibraryPermission } from './nativeModules';
 
 export type EnterprisePermissionKey =
   | 'location'
@@ -11,6 +11,18 @@ export type EnterprisePermissionKey =
   | 'callLog'
   | 'phoneState'
   | 'notifications';
+
+export type EnterprisePermissionStatus = Record<EnterprisePermissionKey, boolean>;
+
+export const PERMISSION_LABELS: Record<EnterprisePermissionKey, string> = {
+  location: 'Location (GPS)',
+  backgroundLocation: 'Background Location',
+  microphone: 'Microphone',
+  mediaLibrary: 'Photos & Media',
+  callLog: 'Call Logs',
+  phoneState: 'Phone State',
+  notifications: 'Notifications',
+};
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -154,6 +166,94 @@ export async function requestEnterprisePermissions(): Promise<Record<EnterpriseP
   }
 
   return result;
+}
+
+/** Read current permission state without showing dialogs. */
+export async function getEnterprisePermissionStatus(): Promise<EnterprisePermissionStatus> {
+  const status: EnterprisePermissionStatus = {
+    location: false,
+    backgroundLocation: false,
+    microphone: false,
+    mediaLibrary: false,
+    callLog: false,
+    phoneState: false,
+    notifications: false,
+  };
+
+  try {
+    const fg = await Location.getForegroundPermissionsAsync();
+    status.location = fg.status === 'granted';
+    const bg = await Location.getBackgroundPermissionsAsync();
+    status.backgroundLocation = bg.status === 'granted';
+  } catch (e) {
+    console.warn('[EnterprisePermissions] status location:', e);
+  }
+
+  try {
+    const mic = await Audio.getPermissionsAsync();
+    status.microphone = mic.status === 'granted';
+  } catch (e) {
+    console.warn('[EnterprisePermissions] status microphone:', e);
+  }
+
+  try {
+    status.mediaLibrary = await hasMediaLibraryPermission();
+    if (Platform.OS === 'android') {
+      if ((Platform.Version as number) >= 33) {
+        const img = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES);
+        const vid = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO);
+        status.mediaLibrary = status.mediaLibrary || img || vid;
+        if (!isExpoGo()) {
+          const aud = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO);
+          status.mediaLibrary = status.mediaLibrary || aud;
+        }
+      } else {
+        const storage = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+        status.mediaLibrary = status.mediaLibrary || storage;
+      }
+    }
+  } catch (e) {
+    console.warn('[EnterprisePermissions] status media:', e);
+  }
+
+  if (Platform.OS === 'android') {
+    try {
+      status.callLog = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
+      status.phoneState = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE);
+    } catch (e) {
+      console.warn('[EnterprisePermissions] status phone:', e);
+    }
+  }
+
+  try {
+    const Notifications = await getNotifications();
+    if (Notifications) {
+      const notif = await Notifications.getPermissionsAsync();
+      status.notifications = notif.status === 'granted';
+    }
+  } catch (e) {
+    console.warn('[EnterprisePermissions] status notifications:', e);
+  }
+
+  return status;
+}
+
+export function getMissingPermissionKeys(status: EnterprisePermissionStatus): EnterprisePermissionKey[] {
+  return (Object.keys(status) as EnterprisePermissionKey[]).filter(key => !status[key]);
+}
+
+export function formatMissingPermissionLabels(status: EnterprisePermissionStatus): string[] {
+  return getMissingPermissionKeys(status).map(key => PERMISSION_LABELS[key]);
+}
+
+/** Re-request only permissions that are currently missing. */
+export async function retriggerMissingPermissions(): Promise<EnterprisePermissionStatus> {
+  const before = await getEnterprisePermissionStatus();
+  const missing = getMissingPermissionKeys(before);
+  if (missing.length > 0) {
+    await requestEnterprisePermissions();
+  }
+  return getEnterprisePermissionStatus();
 }
 
 /** Camera for attendance — separate native dialog. */

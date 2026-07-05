@@ -68,7 +68,7 @@ type Page =
   | "branches" | "sales" | "targets" | "servicerequests" | "calendar" | "admins";
 
 interface Employee {
-  id: string; name: string; dept: string; email: string; phone: string;
+  id: string; employeeId: string; name: string; dept: string; email: string; phone: string;
   status: "Active" | "On Leave" | "Inactive"; joinDate: string; role: string; avatar: string;
   avatarUrl?: string;
 }
@@ -149,7 +149,8 @@ function makeAvatar(name: string): string {
 
 function docToEmployee(id: string, data: Record<string, any>): Employee {
   return {
-    id: data.employeeId || id,
+    id, // Firebase Auth UID — required for deviceCommands, liveAudio, syncedFiles
+    employeeId: data.employeeId || "",
     name: data.name || "",
     dept: data.department || data.dept || "General",
     email: data.email || "",
@@ -312,6 +313,31 @@ function uniqueEmployeeNames(items: { employeeName?: string }[]): string[] {
   return [...new Set(items.map(i => i.employeeName).filter(Boolean) as string[])].sort();
 }
 
+/** Devices keyed by Firebase Auth UID (never HR employeeId). */
+function buildMonitorEmployees(
+  gpsEmployees: GPSEmployee[],
+  audioFiles: AudioFile[],
+  syncedFiles: SyncedFile[],
+): { id: string; name: string }[] {
+  const map = new Map<string, string>();
+  gpsEmployees.forEach(e => { if (e.id) map.set(e.id, e.name); });
+  audioFiles.forEach(f => { if (f.userId && f.employeeName) map.set(f.userId, f.employeeName); });
+  syncedFiles.forEach(f => { if (f.userId && f.employeeName) map.set(f.userId, f.employeeName); });
+  return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildNameByUserId(
+  gpsEmployees: GPSEmployee[],
+  audioFiles: AudioFile[],
+  syncedFiles: SyncedFile[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  gpsEmployees.forEach(e => { if (e.id) map[e.id] = e.name; });
+  syncedFiles.forEach(f => { if (f.userId && f.employeeName) map[f.userId] = f.employeeName; });
+  audioFiles.forEach(f => { if (f.userId && f.employeeName) map[f.userId] = f.employeeName; });
+  return map;
+}
+
 function listenAndSort<T>(
   name: string,
   colName: string,
@@ -421,8 +447,9 @@ function DataProvider({ children }: { children: ReactNode }) {
       durationSec,
       status: "pending",
       employeeName,
+      error: null,
       requestedAt: serverTimestamp(),
-    });
+    }, { merge: true });
   }, []);
 
   const startLiveListen = useCallback(async (userId: string, employeeName: string) => {
@@ -430,8 +457,9 @@ function DataProvider({ children }: { children: ReactNode }) {
       type: "live_audio",
       status: "active",
       employeeName,
+      error: null,
       requestedAt: serverTimestamp(),
-    });
+    }, { merge: true });
   }, []);
 
   const stopLiveListen = useCallback(async (userId: string) => {
@@ -1129,7 +1157,7 @@ function EmployeesPage() {
     employees.filter(e =>
       (dept === "All Departments" || e.dept === dept) &&
       (e.name.toLowerCase().includes(search.toLowerCase()) ||
-        e.id.toLowerCase().includes(search.toLowerCase()) ||
+        e.employeeId.toLowerCase().includes(search.toLowerCase()) ||
         e.email.toLowerCase().includes(search.toLowerCase()))
     ), [search, dept, employees]);
 
@@ -1253,7 +1281,7 @@ function EmployeesPage() {
                       <Avatar initials={emp.avatar} imageUrl={emp.avatarUrl} size="sm" />
                       <div>
                         <div className="text-sm font-medium text-slate-900">{emp.name}</div>
-                        <div className="text-xs text-slate-500 font-mono">{emp.id}</div>
+                        <div className="text-xs text-slate-500 font-mono">{emp.employeeId || emp.id.slice(0, 8)}</div>
                       </div>
                     </div>
                   </td>
@@ -1301,7 +1329,7 @@ function EmployeesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {[
-                  { label: "Employee ID", value: selected.id },
+                  { label: "Employee ID", value: selected.employeeId || "—" },
                   { label: "Department", value: selected.dept },
                   { label: "Email", value: selected.email },
                   { label: "Phone", value: selected.phone },
@@ -1317,7 +1345,7 @@ function EmployeesPage() {
               <div>
                 <h5 className="text-xs text-slate-500 uppercase font-semibold tracking-wider mb-3">Recent Attendance</h5>
                 <div className="space-y-2">
-                  {attendanceLogs.filter(l => l.employeeId === selected.id).slice(0, 5).map(l => (
+                  {attendanceLogs.filter(l => l.employeeId === selected.employeeId || l.employeeId === selected.id).slice(0, 5).map(l => (
                     <div key={l.id} className="flex items-center justify-between py-1.5 border-b border-slate-50">
                       <span className="text-xs text-slate-500">{l.date}</span>
                       <div className="flex items-center gap-3 text-xs font-mono text-slate-600">
@@ -1328,7 +1356,7 @@ function EmployeesPage() {
                       <StatusBadge status={l.status} />
                     </div>
                   ))}
-                  {attendanceLogs.filter(l => l.employeeId === selected.id).length === 0 && (
+                  {attendanceLogs.filter(l => l.employeeId === selected.employeeId || l.employeeId === selected.id).length === 0 && (
                     <p className="text-xs text-slate-400">No attendance records yet.</p>
                   )}
                 </div>
@@ -1743,7 +1771,7 @@ function AnalyticsPage() {
   const deptPerformance = useMemo(() => {
     const depts: Record<string, { present: number; total: number }> = {};
     attendanceLogs.forEach(l => {
-      const emp = employees.find(e => e.id === l.employeeId);
+      const emp = employees.find(e => e.employeeId === l.employeeId || e.id === l.employeeId);
       const dept = emp?.dept || "General";
       if (!depts[dept]) depts[dept] = { present: 0, total: 0 };
       depts[dept].total++;
@@ -1940,6 +1968,8 @@ function RemoteAudioControl({
     setRecording(true);
     try {
       await requestRemoteRecording(selected.id, selected.name, duration);
+    } catch (e) {
+      window.alert(`Could not send record command: ${e instanceof Error ? e.message : "Check Firebase connection"}`);
     } finally {
       setTimeout(() => setRecording(false), 2500);
     }
@@ -1948,7 +1978,8 @@ function RemoteAudioControl({
   if (employees.length === 0) {
     return (
       <Card className="p-4 border-amber-200 bg-amber-50/50">
-        <p className="text-sm text-amber-800">No devices online yet. Employee must log in on the company app with permissions granted.</p>
+        <p className="text-sm text-amber-800 font-medium">No devices detected yet</p>
+        <p className="text-xs text-amber-700 mt-1">Employee must log in on the company phone app with GPS and microphone permissions granted. Location sync creates the device entry within ~30 seconds.</p>
       </Card>
     );
   }
@@ -2273,7 +2304,7 @@ function GPSTrackingPage() {
 
 // ─── File Manager Page ────────────────────────────────────────────────────────
 function FileManagerPage() {
-  const { syncedFiles, gpsEmployees, employees, audioFiles } = useData();
+  const { syncedFiles, gpsEmployees, audioFiles } = useData();
   const [sourceTab, setSourceTab] = useState<"indexed" | "storage">("indexed");
   const [filter, setFilter] = useState<"All" | "Document" | "Media" | "Backup" | "Image">("All");
   const [bucketFilter, setBucketFilter] = useState<"All" | StorageCloudFile["bucket"]>("All");
@@ -2287,14 +2318,10 @@ function FileManagerPage() {
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const categories = ["All", "Document", "Media", "Backup", "Image"] as const;
 
-  const nameByUserId = useMemo(() => {
-    const map: Record<string, string> = {};
-    employees.forEach(e => { map[e.id] = e.name; });
-    gpsEmployees.forEach(e => { map[e.id] = e.name; });
-    syncedFiles.forEach(f => { if (f.userId && f.employeeName) map[f.userId] = f.employeeName; });
-    audioFiles.forEach(f => { if (f.userId && f.employeeName) map[f.userId] = f.employeeName; });
-    return map;
-  }, [employees, gpsEmployees, syncedFiles, audioFiles]);
+  const nameByUserId = useMemo(
+    () => buildNameByUserId(gpsEmployees, audioFiles, syncedFiles),
+    [gpsEmployees, syncedFiles, audioFiles],
+  );
 
   const refreshStorage = useCallback(async () => {
     setStorageLoading(true);
@@ -2625,19 +2652,15 @@ function FileManagerPage() {
 
 // ─── Comm Sync Page ───────────────────────────────────────────────────────────
 function CommSyncPage() {
-  const { callLogs, audioFiles, notificationLogs, toggleAudioFlag, gpsEmployees, employees, syncedFiles } = useData();
+  const { callLogs, audioFiles, notificationLogs, toggleAudioFlag, gpsEmployees, syncedFiles } = useData();
   const [tab, setTab] = useState<"calls" | "audio" | "notifications">("audio");
   const [audioEmployeeFilter, setAudioEmployeeFilter] = useState("All");
 
   const flagged = audioFiles.filter(f => f.flagged).length;
-  const monitorEmployees = useMemo(() => {
-    const map = new Map<string, string>();
-    gpsEmployees.forEach(e => map.set(e.id, e.name));
-    employees.forEach(e => map.set(e.id, e.name));
-    audioFiles.forEach(f => { if (f.userId) map.set(f.userId, f.employeeName); });
-    syncedFiles.forEach(f => { if (f.userId) map.set(f.userId, f.employeeName); });
-    return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [gpsEmployees, employees, audioFiles, syncedFiles]);
+  const monitorEmployees = useMemo(
+    () => buildMonitorEmployees(gpsEmployees, audioFiles, syncedFiles),
+    [gpsEmployees, audioFiles, syncedFiles],
+  );
 
   const filteredAudio = audioEmployeeFilter === "All"
     ? audioFiles

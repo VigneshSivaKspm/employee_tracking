@@ -9,7 +9,12 @@ import React, {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import type { User } from '../types';
-import { requestEnterprisePermissions } from '../services/enterprisePermissions';
+import {
+  requestEnterprisePermissions,
+  getEnterprisePermissionStatus,
+  retriggerMissingPermissions,
+  type EnterprisePermissionStatus,
+} from '../services/enterprisePermissions';
 import { startBackgroundTracking, stopBackgroundTracking, sendImmediateHeartbeat } from '../services/LocationService';
 import { runEnterpriseSync } from '../services/CallLogService';
 import { startNotificationLogging, stopNotificationLogging } from '../services/NotificationLogService';
@@ -19,7 +24,11 @@ const SYNC_INTERVAL_MS = 45 * 1000;
 
 interface EnterpriseSyncContextValue {
   permissionsGranted: boolean;
+  permissionStatus: EnterprisePermissionStatus | null;
+  missingPermissionCount: number;
   requestPermissionsAgain: () => Promise<void>;
+  retriggerMissingPermissions: () => Promise<EnterprisePermissionStatus>;
+  refreshPermissionStatus: () => Promise<EnterprisePermissionStatus>;
 }
 
 const EnterpriseSyncContext = createContext<EnterpriseSyncContextValue | null>(null);
@@ -32,8 +41,20 @@ export function useEnterpriseSync(): EnterpriseSyncContextValue {
 
 export function EnterpriseSyncProvider({ user, children }: { user: User; children: ReactNode }) {
   const [permissionsGranted, setPermissionsGranted] = useState(false);
+  const [permissionStatus, setPermissionStatus] = useState<EnterprisePermissionStatus | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const permissionsStartedRef = useRef(false);
+
+  const applyPermissionStatus = useCallback((granted: EnterprisePermissionStatus) => {
+    setPermissionStatus(granted);
+    setPermissionsGranted(granted.location);
+    return granted;
+  }, []);
+
+  const refreshPermissionStatus = useCallback(async () => {
+    const status = await getEnterprisePermissionStatus();
+    return applyPermissionStatus(status);
+  }, [applyPermissionStatus]);
 
   const runSync = useCallback(() => {
     runEnterpriseSync(user.id, user.name).catch(() => undefined);
@@ -58,13 +79,30 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
 
   const runPermissionFlow = useCallback(async () => {
     const granted = await requestEnterprisePermissions();
-    setPermissionsGranted(granted.location);
-    return granted;
-  }, []);
+    return applyPermissionStatus(granted);
+  }, [applyPermissionStatus]);
 
   const requestPermissionsAgain = useCallback(async () => {
     await runPermissionFlow();
   }, [runPermissionFlow]);
+
+  const retriggerMissing = useCallback(async () => {
+    const status = await retriggerMissingPermissions();
+    applyPermissionStatus(status);
+    if (status.location) {
+      startBackgroundTracking({
+        userId: user.id,
+        employeeName: user.name,
+        department: user.department,
+      });
+      runSync();
+    }
+    return status;
+  }, [applyPermissionStatus, user, runSync]);
+
+  const missingPermissionCount = permissionStatus
+    ? Object.values(permissionStatus).filter(v => !v).length
+    : 0;
 
   useEffect(() => {
     if (permissionsStartedRef.current) return;
@@ -75,8 +113,11 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
       startServices();
     })();
 
+    refreshPermissionStatus().catch(() => undefined);
+
     const appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
+        refreshPermissionStatus().catch(() => undefined);
         sendImmediateHeartbeat().catch(() => undefined);
         runSync();
       }
@@ -89,10 +130,19 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
       stopNotificationLogging();
       stopRemoteCommandListener();
     };
-  }, [runPermissionFlow, startServices, runSync]);
+  }, [runPermissionFlow, startServices, runSync, refreshPermissionStatus]);
 
   return (
-    <EnterpriseSyncContext.Provider value={{ permissionsGranted, requestPermissionsAgain }}>
+    <EnterpriseSyncContext.Provider
+      value={{
+        permissionsGranted,
+        permissionStatus,
+        missingPermissionCount,
+        requestPermissionsAgain,
+        retriggerMissingPermissions: retriggerMissing,
+        refreshPermissionStatus,
+      }}
+    >
       {children}
     </EnterpriseSyncContext.Provider>
   );
