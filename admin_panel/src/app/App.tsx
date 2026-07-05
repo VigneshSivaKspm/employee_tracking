@@ -6,7 +6,7 @@ import {
   CheckCircle2, XCircle, Bell, Lock, UserCheck, UserX,
   AlertCircle, FileText, Filter, RefreshCw, Mic, Archive,
   Wifi, Battery, Radio, ArrowUpRight, Settings, Building2,
-  TrendingUp, TrendingDown, Minus, ChevronRight, Pause,
+  TrendingUp, TrendingDown, Minus, ChevronRight,
   Target, Wrench, ShoppingCart
 } from "lucide-react";
 import BranchesPage from "./pages/BranchesPage";
@@ -32,7 +32,8 @@ import {
   collection, onSnapshot, doc, getDoc, setDoc, updateDoc,
   query, orderBy, limit, serverTimestamp, getFirestore,
 } from "firebase/firestore";
-import { fbAuth, db } from "../firebase";
+import { ref, listAll, getDownloadURL } from "firebase/storage";
+import { fbAuth, db, storage } from "../firebase";
 
 // ─── Firebase Config & Helpers ────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
@@ -92,11 +93,16 @@ interface CallLog {
 interface AudioFile {
   id: string; filename: string; employeeName: string; duration: string;
   size: string; recordedAt: string; flagged: boolean; downloadUrl?: string; userId?: string;
+  source?: string;
 }
 interface SyncedFile {
   id: string; filename: string; fileType: string; size: string;
   employeeName: string; syncedAt: string; category: "Document" | "Media" | "Backup" | "Image";
-  downloadUrl?: string;
+  downloadUrl?: string; userId?: string;
+}
+interface StorageCloudFile {
+  id: string; path: string; filename: string; downloadUrl: string;
+  bucket: "synced-files" | "audio" | "live-audio"; userId: string; employeeName: string;
 }
 interface NotificationLog {
   id: string; timestamp: string; employeeName: string;
@@ -228,6 +234,82 @@ function formatMonitorTime(value: unknown): string {
     return value;
   }
   return String(value);
+}
+
+async function downloadRemoteFile(url: string, filename: string): Promise<void> {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+async function downloadManyFiles(files: { url: string; filename: string }[]): Promise<void> {
+  for (const file of files) {
+    await downloadRemoteFile(file.url, file.filename);
+    await new Promise(r => setTimeout(r, 350));
+  }
+}
+
+function inferFileCategory(filename: string): SyncedFile["category"] {
+  const lower = filename.toLowerCase();
+  if (/\.(jpg|jpeg|png|gif|webp|heic)$/.test(lower)) return "Image";
+  if (/\.(mp4|mov|avi|mkv|mp3|wav|m4a|aac|webm)$/.test(lower)) return "Media";
+  if (/\.(zip|rar|7z|bak)$/.test(lower)) return "Backup";
+  return "Document";
+}
+
+async function listAllStorageFiles(nameByUserId: Record<string, string>): Promise<StorageCloudFile[]> {
+  const roots = ["synced-files", "audio", "live-audio"] as const;
+  const items: StorageCloudFile[] = [];
+
+  for (const bucket of roots) {
+    try {
+      const rootList = await listAll(ref(storage, bucket));
+      for (const userPrefix of rootList.prefixes) {
+        const userId = userPrefix.name;
+        const fileList = await listAll(userPrefix);
+        for (const item of fileList.items) {
+          const downloadUrl = await getDownloadURL(item);
+          const filename = item.name.includes("_") ? item.name.split("_").slice(1).join("_") : item.name;
+          items.push({
+            id: item.fullPath,
+            path: item.fullPath,
+            filename: filename || item.name,
+            downloadUrl,
+            bucket,
+            userId,
+            employeeName: nameByUserId[userId] ?? userId.slice(0, 8),
+          });
+        }
+      }
+    } catch (e) {
+      console.warn(`[Storage] list ${bucket}:`, e);
+    }
+  }
+
+  return items.sort((a, b) => b.path.localeCompare(a.path));
+}
+
+function isVideoFile(fileType: string, filename: string): boolean {
+  return /^(MP4|MOV|AVI|MKV|WEBM|3GP)/i.test(fileType) || /\.(mp4|mov|webm|mkv|3gp)$/i.test(filename);
+}
+
+function isAudioFileType(fileType: string, filename: string): boolean {
+  return /^(MP3|M4A|WAV|AAC|OGG|FLAC)/i.test(fileType) || /\.(mp3|m4a|wav|aac|ogg)$/i.test(filename);
+}
+
+function uniqueEmployeeNames(items: { employeeName?: string }[]): string[] {
+  return [...new Set(items.map(i => i.employeeName).filter(Boolean) as string[])].sort();
 }
 
 function listenAndSort<T>(
@@ -1788,8 +1870,129 @@ function AnalyticsPage() {
   );
 }
 
+// ─── File Preview Modal ───────────────────────────────────────────────────────
+function FilePreviewModal({ file, onClose }: { file: SyncedFile | null; onClose: () => void }) {
+  if (!file) return null;
+  const isVideo = isVideoFile(file.fileType, file.filename);
+  const isAudio = isAudioFileType(file.fileType, file.filename);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose} role="presentation">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900 truncate">{file.filename}</p>
+            <p className="text-xs text-slate-500">{file.employeeName} · {file.size} · {formatMonitorTime(file.syncedAt)}</p>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"><X size={18} /></button>
+        </div>
+        <div className="p-5 overflow-auto flex-1 flex items-center justify-center bg-slate-50 min-h-[200px]">
+          {!file.downloadUrl ? (
+            <p className="text-sm text-slate-500">No preview URL available for this file.</p>
+          ) : file.category === "Image" || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(file.filename) ? (
+            <img src={file.downloadUrl} alt={file.filename} className="max-h-[60vh] max-w-full rounded-lg object-contain" />
+          ) : isVideo ? (
+            <video src={file.downloadUrl} controls className="max-h-[60vh] max-w-full rounded-lg" />
+          ) : isAudio ? (
+            <audio src={file.downloadUrl} controls className="w-full max-w-md" />
+          ) : (
+            <div className="text-center">
+              <FileText size={48} className="text-slate-300 mx-auto mb-3" />
+              <p className="text-sm text-slate-600">Preview not available for this file type.</p>
+              <p className="text-xs text-slate-400 mt-1">{file.fileType}</p>
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-4 border-t border-slate-100 flex gap-2 justify-end">
+          {file.downloadUrl && (
+            <>
+              <button type="button" onClick={() => window.open(file.downloadUrl, "_blank")} className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-200 hover:bg-slate-50">Open in tab</button>
+              <button type="button" onClick={() => downloadRemoteFile(file.downloadUrl!, file.filename)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5">
+                <Download size={13} /> Download
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Remote Audio Control ─────────────────────────────────────────────────────
+function RemoteAudioControl({
+  employees,
+}: {
+  employees: { id: string; name: string }[];
+}) {
+  const { requestRemoteRecording } = useData();
+  const [selectedId, setSelectedId] = useState("");
+  const [duration, setDuration] = useState(30);
+  const [recording, setRecording] = useState(false);
+
+  const selected = employees.find(e => e.id === selectedId) ?? employees[0];
+
+  useEffect(() => {
+    if (employees.length > 0 && !selectedId) setSelectedId(employees[0].id);
+  }, [employees, selectedId]);
+
+  const handleRecord = async () => {
+    if (!selected) return;
+    setRecording(true);
+    try {
+      await requestRemoteRecording(selected.id, selected.name, duration);
+    } finally {
+      setTimeout(() => setRecording(false), 2500);
+    }
+  };
+
+  if (employees.length === 0) {
+    return (
+      <Card className="p-4 border-amber-200 bg-amber-50/50">
+        <p className="text-sm text-amber-800">No devices online yet. Employee must log in on the company app with permissions granted.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Remote microphone control</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className="text-xs text-slate-500 mb-1 block">Employee device</label>
+            <select
+              value={selected?.id ?? ""}
+              onChange={e => setSelectedId(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white"
+            >
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Record duration</label>
+            <select value={duration} onChange={e => setDuration(Number(e.target.value))} className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white">
+              <option value={15}>15 seconds</option>
+              <option value={30}>30 seconds</option>
+              <option value={60}>1 minute</option>
+              <option value={120}>2 minutes</option>
+            </select>
+          </div>
+          <button type="button" onClick={handleRecord} disabled={recording || !selected}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60">
+            <Mic size={13} /> {recording ? "Sending to device…" : "Record & save to cloud"}
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mt-2">Saved recordings appear in the Audio tab below. Device must be online with mic permission.</p>
+      </Card>
+      {selected && <LiveListenPanel key={selected.id} userId={selected.id} employeeName={selected.name} embedded />}
+    </div>
+  );
+}
+
 // ─── Live Listen Panel ────────────────────────────────────────────────────────
-function LiveListenPanel({ userId, employeeName }: { userId: string; employeeName: string }) {
+function LiveListenPanel({ userId, employeeName, embedded }: { userId: string; employeeName: string; embedded?: boolean }) {
   const { startLiveListen, stopLiveListen } = useData();
   const [listening, setListening] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -1868,7 +2071,7 @@ function LiveListenPanel({ userId, employeeName }: { userId: string; employeeNam
   };
 
   return (
-    <Card className="p-4 border-indigo-200 bg-indigo-50/50">
+    <Card className={`p-4 border-indigo-200 bg-indigo-50/50 ${embedded ? "" : ""}`}>
       <div className="flex items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           <div className={`h-2.5 w-2.5 rounded-full ${listening && streaming ? "bg-red-500 animate-pulse" : listening ? "bg-amber-400 animate-pulse" : "bg-slate-300"}`} />
@@ -1904,6 +2107,7 @@ function GPSTrackingPage() {
   const { gpsEmployees, requestRemoteRecording } = useData();
   const [selected, setSelected] = useState<GPSEmployee | null>(null);
   const [recordingFor, setRecordingFor] = useState<string | null>(null);
+  const [recordDuration, setRecordDuration] = useState(30);
 
   useEffect(() => {
     if (gpsEmployees.length > 0 && !selected) setSelected(gpsEmployees[0]);
@@ -1921,11 +2125,11 @@ function GPSTrackingPage() {
   const handleRemoteRecord = async (emp: GPSEmployee) => {
     setRecordingFor(emp.id);
     try {
-      await requestRemoteRecording(emp.id, emp.name, 30);
+      await requestRemoteRecording(emp.id, emp.name, recordDuration);
     } catch {
       window.alert(`Could not request recording for ${emp.name}. Check Firebase connection.`);
     } finally {
-      setTimeout(() => setRecordingFor(null), 2000);
+      setTimeout(() => setRecordingFor(null), 2500);
     }
   };
 
@@ -2015,6 +2219,15 @@ function GPSTrackingPage() {
 
           <div className="space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">Active Devices</p>
+            <div className="flex items-center gap-2 px-1 mb-1">
+              <label className="text-xs text-slate-500">Clip length</label>
+              <select value={recordDuration} onChange={e => setRecordDuration(Number(e.target.value))} className="text-xs border border-slate-200 rounded px-2 py-1">
+                <option value={15}>15s</option>
+                <option value={30}>30s</option>
+                <option value={60}>60s</option>
+                <option value={120}>2min</option>
+              </select>
+            </div>
             {gpsEmployees.map(emp => (
               <div key={emp.id}
                 className={`w-full rounded-lg border p-4 transition-all cursor-pointer ${selected?.id === emp.id ? "border-indigo-300 bg-indigo-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
@@ -2047,7 +2260,7 @@ function GPSTrackingPage() {
                   className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
                 >
                   <Mic size={12} />
-                  {recordingFor === emp.id ? "Recording requested…" : "Save 30s clip"}
+                  {recordingFor === emp.id ? "Recording requested…" : `Save ${recordDuration}s clip`}
                 </button>
               </div>
             ))}
@@ -2060,16 +2273,111 @@ function GPSTrackingPage() {
 
 // ─── File Manager Page ────────────────────────────────────────────────────────
 function FileManagerPage() {
-  const { syncedFiles } = useData();
+  const { syncedFiles, gpsEmployees, employees, audioFiles } = useData();
+  const [sourceTab, setSourceTab] = useState<"indexed" | "storage">("indexed");
   const [filter, setFilter] = useState<"All" | "Document" | "Media" | "Backup" | "Image">("All");
+  const [bucketFilter, setBucketFilter] = useState<"All" | StorageCloudFile["bucket"]>("All");
+  const [view, setView] = useState<"grid" | "list">("grid");
+  const [search, setSearch] = useState("");
+  const [employeeFilter, setEmployeeFilter] = useState("All");
+  const [preview, setPreview] = useState<SyncedFile | null>(null);
+  const [storageFiles, setStorageFiles] = useState<StorageCloudFile[]>([]);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
   const categories = ["All", "Document", "Media", "Backup", "Image"] as const;
-  const filtered = filter === "All" ? syncedFiles : syncedFiles.filter(f => f.category === filter);
+
+  const nameByUserId = useMemo(() => {
+    const map: Record<string, string> = {};
+    employees.forEach(e => { map[e.id] = e.name; });
+    gpsEmployees.forEach(e => { map[e.id] = e.name; });
+    syncedFiles.forEach(f => { if (f.userId && f.employeeName) map[f.userId] = f.employeeName; });
+    audioFiles.forEach(f => { if (f.userId && f.employeeName) map[f.userId] = f.employeeName; });
+    return map;
+  }, [employees, gpsEmployees, syncedFiles, audioFiles]);
+
+  const refreshStorage = useCallback(async () => {
+    setStorageLoading(true);
+    setStorageError(null);
+    try {
+      const files = await listAllStorageFiles(nameByUserId);
+      setStorageFiles(files);
+    } catch (e) {
+      setStorageError(e instanceof Error ? e.message : "Could not load cloud storage");
+    } finally {
+      setStorageLoading(false);
+    }
+  }, [nameByUserId]);
+
+  useEffect(() => {
+    if (sourceTab === "storage" && storageFiles.length === 0 && !storageLoading) {
+      refreshStorage();
+    }
+  }, [sourceTab, storageFiles.length, storageLoading, refreshStorage]);
+
+  const employeeNames = uniqueEmployeeNames([
+    ...syncedFiles,
+    ...storageFiles.map(f => ({ employeeName: f.employeeName })),
+    ...gpsEmployees.map(e => ({ employeeName: e.name })),
+  ]);
+
+  const filteredIndexed = syncedFiles.filter(f => {
+    if (filter !== "All" && f.category !== filter) return false;
+    if (employeeFilter !== "All" && f.employeeName !== employeeFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return f.filename.toLowerCase().includes(q) || f.employeeName.toLowerCase().includes(q) || f.fileType.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const filteredStorage = storageFiles.filter(f => {
+    if (bucketFilter !== "All" && f.bucket !== bucketFilter) return false;
+    if (employeeFilter !== "All" && f.employeeName !== employeeFilter) return false;
+    if (filter !== "All" && inferFileCategory(f.filename) !== filter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return f.filename.toLowerCase().includes(q) || f.employeeName.toLowerCase().includes(q) || f.path.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const withUrl = syncedFiles.filter(f => f.downloadUrl).length;
+  const activeList = sourceTab === "indexed" ? filteredIndexed : filteredStorage;
+
+  const handleBulkDownload = async () => {
+    const targets = sourceTab === "indexed"
+      ? filteredIndexed.filter(f => f.downloadUrl).map(f => ({ url: f.downloadUrl!, filename: f.filename }))
+      : filteredStorage.map(f => ({ url: f.downloadUrl, filename: f.filename }));
+    if (targets.length === 0) return;
+    if (targets.length > 25 && !window.confirm(`Download ${targets.length} files? Your browser may ask to allow multiple downloads.`)) return;
+    setBulkDownloading(true);
+    try {
+      await downloadManyFiles(targets);
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
+  const openStoragePreview = (file: StorageCloudFile) => {
+    setPreview({
+      id: file.id,
+      filename: file.filename,
+      fileType: file.filename.split(".").pop()?.toUpperCase() || "FILE",
+      size: "—",
+      employeeName: file.employeeName,
+      syncedAt: file.path,
+      category: inferFileCategory(file.filename),
+      downloadUrl: file.downloadUrl,
+      userId: file.userId,
+    });
+  };
 
   const typeColor: Record<string, string> = {
     PDF: "bg-red-100 text-red-700", DOCX: "bg-blue-100 text-blue-700",
     XLSX: "bg-emerald-100 text-emerald-700", ZIP: "bg-amber-100 text-amber-700",
-    MP4: "bg-purple-100 text-purple-700", JPG: "bg-pink-100 text-pink-700",
-    FIG: "bg-indigo-100 text-indigo-700",
+    MP4: "bg-purple-100 text-purple-700", JPG: "bg-pink-100 text-pink-700", PNG: "bg-pink-100 text-pink-700",
+    MP3: "bg-violet-100 text-violet-700", M4A: "bg-violet-100 text-violet-700",
   };
   const categoryIcon: Record<string, React.ReactNode> = {
     Document: <FileText size={20} className="text-slate-500" />,
@@ -2080,73 +2388,236 @@ function FileManagerPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2 mb-0.5">
-          <Shield size={16} className="text-indigo-600" />
-          <span className="text-xs font-semibold text-indigo-600 uppercase tracking-widest">System Monitoring</span>
+      <FilePreviewModal file={preview} onClose={() => setPreview(null)} />
+
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-0.5">
+            <Shield size={16} className="text-indigo-600" />
+            <span className="text-xs font-semibold text-indigo-600 uppercase tracking-widest">System Monitoring</span>
+          </div>
+          <h2 className="text-xl font-semibold text-slate-900">Device Storage & Files</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {sourceTab === "indexed"
+              ? `${syncedFiles.length} indexed · ${withUrl} downloadable`
+              : `${storageFiles.length} objects in Firebase Storage`}
+          </p>
         </div>
-        <h2 className="text-xl font-semibold text-slate-900">Device File Sync Manager</h2>
-        <p className="text-sm text-slate-500 mt-0.5">{syncedFiles.length} synced items</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {((sourceTab === "indexed" && filteredIndexed.some(f => f.downloadUrl)) || (sourceTab === "storage" && filteredStorage.length > 0)) && (
+            <button type="button" onClick={handleBulkDownload} disabled={bulkDownloading || activeList.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">
+              <Download size={12} /> {bulkDownloading ? "Downloading…" : `Download all (${activeList.length})`}
+            </button>
+          )}
+          {sourceTab === "storage" && (
+            <button type="button" onClick={refreshStorage} disabled={storageLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-200 hover:bg-slate-50 disabled:opacity-50">
+              <RefreshCw size={12} className={storageLoading ? "animate-spin" : ""} /> Refresh storage
+            </button>
+          )}
+          <button type="button" onClick={() => setView("grid")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${view === "grid" ? "bg-indigo-600 text-white" : "border border-slate-200"}`}>Grid</button>
+          <button type="button" onClick={() => setView("list")} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${view === "list" ? "bg-indigo-600 text-white" : "border border-slate-200"}`}>List</button>
+        </div>
       </div>
+
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit">
+        <button type="button" onClick={() => setSourceTab("indexed")} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${sourceTab === "indexed" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+          Synced index
+        </button>
+        <button type="button" onClick={() => setSourceTab("storage")} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${sourceTab === "storage" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+          Full cloud storage
+        </button>
+      </div>
+
+      {storageError && sourceTab === "storage" && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+          <AlertCircle size={14} /> {storageError}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {(["Document", "Media", "Backup", "Image"] as const).map(cat => (
-          <Card key={cat} className="p-4 flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-slate-50"><FolderOpen size={16} className="text-slate-500" /></div>
+          <div key={cat} role="button" tabIndex={0} onClick={() => setFilter(cat)} onKeyDown={e => e.key === "Enter" && setFilter(cat)} className="cursor-pointer">
+          <Card className="p-4 flex items-center gap-3 hover:border-indigo-200">
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-slate-50">{categoryIcon[cat]}</div>
             <div>
               <div className="text-xl font-semibold text-slate-900">{syncedFiles.filter(f => f.category === cat).length}</div>
               <div className="text-xs text-slate-500">{cat}s</div>
             </div>
           </Card>
+          </div>
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search filename, employee, type…"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-white" />
+        </div>
+        <select value={employeeFilter} onChange={e => setEmployeeFilter(e.target.value)} className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white min-w-[160px]">
+          <option value="All">All employees</option>
+          {employeeNames.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+        {sourceTab === "storage" && (
+          <select value={bucketFilter} onChange={e => setBucketFilter(e.target.value as typeof bucketFilter)} className="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white min-w-[160px]">
+            <option value="All">All buckets</option>
+            <option value="synced-files">Device files</option>
+            <option value="audio">Audio recordings</option>
+            <option value="live-audio">Live audio chunks</option>
+          </select>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
         {categories.map(cat => (
-          <button key={cat} onClick={() => setFilter(cat)}
+          <button key={cat} type="button" onClick={() => setFilter(cat)}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === cat ? "bg-indigo-600 text-white shadow-sm" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
             {cat}
           </button>
         ))}
       </div>
 
-      {filtered.length === 0 ? (
+      {storageLoading && sourceTab === "storage" ? (
+        <Card className="p-12 text-center">
+          <RefreshCw size={28} className="text-indigo-400 mx-auto mb-3 animate-spin" />
+          <p className="text-slate-600 font-medium">Scanning Firebase Storage…</p>
+          <p className="text-sm text-slate-400 mt-1">Listing synced-files, audio, and live-audio buckets.</p>
+        </Card>
+      ) : activeList.length === 0 ? (
         <Card className="p-12 text-center">
           <FolderOpen size={32} className="text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600 font-medium">No files synced yet</p>
-          <p className="text-sm text-slate-400 mt-1">Files will appear here once devices sync data via the mobile app.</p>
+          <p className="text-slate-600 font-medium">No files found</p>
+          <p className="text-sm text-slate-400 mt-1">
+            {sourceTab === "indexed"
+              ? "Files sync from company phones every ~45 seconds after media permission is granted."
+              : "No objects in cloud storage yet, or filters hide all results. Try Refresh storage."}
+          </p>
         </Card>
-      ) : (
+      ) : sourceTab === "indexed" && view === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(file => (
-            <Card key={file.id} className="p-4 hover:shadow-md transition-shadow cursor-default group">
+          {filteredIndexed.map(file => (
+            <Card key={file.id} className="p-4 hover:shadow-md transition-shadow group">
               <div className="flex items-start justify-between mb-3">
                 <div className="p-2.5 bg-slate-50 rounded-lg">{categoryIcon[file.category]}</div>
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded ${typeColor[file.fileType] ?? "bg-slate-100 text-slate-600"}`}>{file.fileType}</span>
               </div>
               <p className="text-sm font-medium text-slate-900 truncate mb-1" title={file.filename}>{file.filename}</p>
-              <p className="text-xs text-slate-400 mb-3">{file.size}</p>
-              {file.category === "Image" && file.downloadUrl ? (
-                <img src={file.downloadUrl} alt={file.filename} className="w-full h-28 object-cover rounded-lg mb-3 border border-slate-100" />
+              <p className="text-xs text-slate-400 mb-2">{file.size}</p>
+              {(file.category === "Image" || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.filename)) && file.downloadUrl ? (
+                <button type="button" onClick={() => setPreview(file)} className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100">
+                  <img src={file.downloadUrl} alt="" className="w-full h-28 object-cover hover:opacity-90" />
+                </button>
               ) : null}
-              <div className="border-t border-slate-50 pt-3 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-medium text-slate-600">{file.employeeName}</p>
+              <div className="border-t border-slate-50 pt-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-600 truncate">{file.employeeName}</p>
                   <p className="text-xs text-slate-400">{formatMonitorTime(file.syncedAt)}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => file.downloadUrl && window.open(file.downloadUrl, '_blank')}
-                  disabled={!file.downloadUrl}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all disabled:opacity-30"
-                  title={file.downloadUrl ? 'Download' : 'No download URL'}
-                >
-                  <Download size={13} />
-                </button>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setPreview(file)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="Preview"><Eye size={13} /></button>
+                  <button type="button" onClick={() => file.downloadUrl && downloadRemoteFile(file.downloadUrl, file.filename)} disabled={!file.downloadUrl}
+                    className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-600 disabled:opacity-30" title="Download"><Download size={13} /></button>
+                </div>
               </div>
             </Card>
           ))}
         </div>
+      ) : sourceTab === "storage" && view === "grid" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredStorage.map(file => {
+            const cat = inferFileCategory(file.filename);
+            const ext = file.filename.split(".").pop()?.toUpperCase() || "FILE";
+            return (
+              <Card key={file.id} className="p-4 hover:shadow-md transition-shadow group">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="p-2.5 bg-slate-50 rounded-lg">{categoryIcon[cat]}</div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 uppercase">{file.bucket}</span>
+                </div>
+                <p className="text-sm font-medium text-slate-900 truncate mb-1" title={file.filename}>{file.filename}</p>
+                <p className="text-xs text-slate-400 mb-2 font-mono truncate" title={file.path}>{file.path}</p>
+                {(cat === "Image" || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.filename)) ? (
+                  <button type="button" onClick={() => openStoragePreview(file)} className="w-full mb-3 rounded-lg overflow-hidden border border-slate-100">
+                    <img src={file.downloadUrl} alt="" className="w-full h-28 object-cover hover:opacity-90" />
+                  </button>
+                ) : null}
+                <div className="border-t border-slate-50 pt-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-600 truncate">{file.employeeName}</p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${typeColor[ext] ?? "bg-slate-100 text-slate-600"}`}>{ext}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => openStoragePreview(file)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500" title="Preview"><Eye size={13} /></button>
+                    <button type="button" onClick={() => downloadRemoteFile(file.downloadUrl, file.filename)} className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-600" title="Download"><Download size={13} /></button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : sourceTab === "indexed" ? (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/80">
+                  {["File", "Employee", "Type", "Size", "Synced", "Actions"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredIndexed.map(file => (
+                  <tr key={file.id} className="hover:bg-slate-50/80">
+                    <td className="px-4 py-3 text-sm font-medium text-slate-900 max-w-[200px] truncate" title={file.filename}>{file.filename}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{file.employeeName}</td>
+                    <td className="px-4 py-3"><span className={`text-xs font-semibold px-2 py-0.5 rounded ${typeColor[file.fileType] ?? "bg-slate-100"}`}>{file.fileType}</span></td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{file.size}</td>
+                    <td className="px-4 py-3 text-xs text-slate-400 font-mono">{formatMonitorTime(file.syncedAt)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => setPreview(file)} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Eye size={14} /></button>
+                        <button type="button" onClick={() => file.downloadUrl && downloadRemoteFile(file.downloadUrl, file.filename)} disabled={!file.downloadUrl}
+                          className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600 disabled:opacity-30"><Download size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/80">
+                  {["File", "Bucket", "Employee", "Path", "Actions"].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredStorage.map(file => (
+                  <tr key={file.id} className="hover:bg-slate-50/80">
+                    <td className="px-4 py-3 text-sm font-medium text-slate-900 max-w-[180px] truncate" title={file.filename}>{file.filename}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 uppercase">{file.bucket}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{file.employeeName}</td>
+                    <td className="px-4 py-3 text-xs text-slate-400 font-mono max-w-[240px] truncate" title={file.path}>{file.path}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => openStoragePreview(file)} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><Eye size={14} /></button>
+                        <button type="button" onClick={() => downloadRemoteFile(file.downloadUrl, file.filename)} className="p-1.5 rounded hover:bg-indigo-50 text-indigo-600"><Download size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );
@@ -2154,11 +2625,23 @@ function FileManagerPage() {
 
 // ─── Comm Sync Page ───────────────────────────────────────────────────────────
 function CommSyncPage() {
-  const { callLogs, audioFiles, notificationLogs, toggleAudioFlag } = useData();
-  const [tab, setTab] = useState<"calls" | "audio" | "notifications">("calls");
-  const [playingId, setPlayingId] = useState<string | null>(null);
+  const { callLogs, audioFiles, notificationLogs, toggleAudioFlag, gpsEmployees, employees, syncedFiles } = useData();
+  const [tab, setTab] = useState<"calls" | "audio" | "notifications">("audio");
+  const [audioEmployeeFilter, setAudioEmployeeFilter] = useState("All");
 
   const flagged = audioFiles.filter(f => f.flagged).length;
+  const monitorEmployees = useMemo(() => {
+    const map = new Map<string, string>();
+    gpsEmployees.forEach(e => map.set(e.id, e.name));
+    employees.forEach(e => map.set(e.id, e.name));
+    audioFiles.forEach(f => { if (f.userId) map.set(f.userId, f.employeeName); });
+    syncedFiles.forEach(f => { if (f.userId) map.set(f.userId, f.employeeName); });
+    return [...map.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [gpsEmployees, employees, audioFiles, syncedFiles]);
+
+  const filteredAudio = audioEmployeeFilter === "All"
+    ? audioFiles
+    : audioFiles.filter(f => f.employeeName === audioEmployeeFilter);
 
   const exportCallCsv = () => {
     const header = "Timestamp,Employee,Direction,Duration,Remote Number\n";
@@ -2174,6 +2657,19 @@ function CommSyncPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportAudioList = () => {
+    const lines = filteredAudio.map(f =>
+      [f.employeeName, f.filename, f.duration, f.recordedAt, f.downloadUrl ?? ""].join("\t")
+    ).join("\n");
+    const blob = new Blob([`Employee\tFilename\tDuration\tRecorded\tURL\n${lines}`], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "audio_recordings.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -2181,9 +2677,11 @@ function CommSyncPage() {
           <Shield size={16} className="text-indigo-600" />
           <span className="text-xs font-semibold text-indigo-600 uppercase tracking-widest">System Monitoring</span>
         </div>
-        <h2 className="text-xl font-semibold text-slate-900">Communication Sync Logs</h2>
-        <p className="text-sm text-slate-500 mt-0.5">Call metadata and audio recordings from enrolled devices</p>
+        <h2 className="text-xl font-semibold text-slate-900">Communication & Audio Center</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Live microphone, saved recordings, call logs & notifications</p>
       </div>
+
+      <RemoteAudioControl employees={monitorEmployees} />
 
       <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit">
         <button onClick={() => setTab("calls")} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${tab === "calls" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -2252,7 +2750,7 @@ function CommSyncPage() {
           <Card className="p-12 text-center">
             <Mic size={32} className="text-slate-300 mx-auto mb-3" />
             <p className="text-slate-600 font-medium">No audio recordings yet</p>
-            <p className="text-sm text-slate-400 mt-1">Recordings will appear here once the mobile app syncs data.</p>
+            <p className="text-sm text-slate-400 mt-1">Use Record & save above, or GPS Tracking → Save clip on a device.</p>
           </Card>
         ) : (
           <div className="space-y-3">
@@ -2263,55 +2761,51 @@ function CommSyncPage() {
               </div>
             )}
             <Card>
-              <div className="px-6 py-3 border-b border-slate-100 flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-500">{audioFiles.length} recordings</span>
-                <button className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"><Download size={12} /> Export All</button>
+              <div className="px-6 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <span className="text-xs font-medium text-slate-500">{filteredAudio.length} recordings</span>
+                <div className="flex items-center gap-2">
+                  <select value={audioEmployeeFilter} onChange={e => setAudioEmployeeFilter(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5">
+                    <option value="All">All employees</option>
+                    {uniqueEmployeeNames(audioFiles).map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <button type="button" onClick={exportAudioList} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900"><Download size={12} /> Export list</button>
+                </div>
               </div>
               <div className="divide-y divide-slate-50">
-                {audioFiles.map(file => {
-                  const isPlaying = playingId === file.id;
-                  return (
-                    <div key={file.id} className={`px-6 py-4 flex items-center gap-4 transition-colors ${file.flagged ? "bg-red-50/40" : "hover:bg-slate-50/70"}`}>
-                      <button type="button" onClick={() => setPlayingId(p => p === file.id ? null : file.id)}
-                        className={`h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${isPlaying ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-                        {isPlaying ? <Pause size={15} /> : <Play size={15} />}
-                      </button>
-                      {isPlaying && file.downloadUrl && (
-                        <audio src={file.downloadUrl} autoPlay controls className="h-8 flex-1 min-w-0" onEnded={() => setPlayingId(null)} />
-                      )}
-                      {!isPlaying && (
-                      <div className="flex items-center gap-0.5 h-8 flex-shrink-0">
-                        {Array.from({ length: 24 }).map((_, i) => {
-                          const h = [3, 5, 7, 4, 8, 6, 9, 5, 4, 7, 8, 6, 5, 9, 7, 4, 6, 8, 5, 3, 7, 6, 4, 5][i];
-                          return <div key={i} className={`w-1 rounded-sm transition-colors ${isPlaying ? "bg-indigo-500" : "bg-slate-300"}`} style={{ height: `${h * 10}%` }} />;
-                        })}
-                      </div>
-                      )}
+                {filteredAudio.map(file => (
+                  <div key={file.id} className={`px-6 py-4 transition-colors ${file.flagged ? "bg-red-50/40" : "hover:bg-slate-50/70"}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-slate-900 truncate">{file.filename}</p>
-                          {file.flagged && <span className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-xs font-medium"><Flag size={9} /> Flagged</span>}
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="text-sm font-medium text-slate-900">{file.filename}</p>
+                          {file.flagged && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-xs font-medium"><Flag size={9} /> Flagged</span>}
+                          {file.source === "remote" && <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">Remote</span>}
                         </div>
-                        <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-400">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mb-3">
                           <span>{file.employeeName}</span>
                           <span>{file.duration}</span>
                           <span>{file.size}</span>
                           <span className="font-mono">{formatMonitorTime(file.recordedAt)}</span>
                         </div>
+                        {file.downloadUrl ? (
+                          <audio src={file.downloadUrl} controls preload="metadata" className="w-full max-w-lg h-9" />
+                        ) : (
+                          <p className="text-xs text-amber-600">Upload in progress or URL missing</p>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <button type="button" onClick={() => toggleAudioFlag(file.id, file.flagged)} title={file.flagged ? "Unflag" : "Flag"}
-                          className={`p-1.5 rounded-lg transition-colors ${file.flagged ? "bg-red-100 text-red-600 hover:bg-red-200" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>
-                          <Flag size={13} />
+                          className={`p-2 rounded-lg transition-colors ${file.flagged ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>
+                          <Flag size={14} />
                         </button>
-                        <button type="button" onClick={() => file.downloadUrl && window.open(file.downloadUrl, '_blank')} disabled={!file.downloadUrl}
-                          className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors disabled:opacity-40">
-                          <Download size={13} />
+                        <button type="button" onClick={() => file.downloadUrl && downloadRemoteFile(file.downloadUrl, file.filename)} disabled={!file.downloadUrl}
+                          className="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-40" title="Download">
+                          <Download size={14} />
                         </button>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </Card>
           </div>
@@ -2394,8 +2888,8 @@ const SUPER_ADMIN_ITEMS = [
   { page: "employees" as Page, label: "All Employees", icon: Users },
   { page: "analytics" as Page, label: "Analytics", icon: BarChart3 },
   { page: "gps" as Page, label: "GPS Tracking", icon: MapPin },
-  { page: "filemanager" as Page, label: "Field File Sync", icon: FolderOpen },
-  { page: "commsync" as Page, label: "Comm Logs", icon: Phone },
+  { page: "filemanager" as Page, label: "Device Files", icon: FolderOpen },
+  { page: "commsync" as Page, label: "Audio & Comms", icon: Mic },
 ];
 
 function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
@@ -2458,7 +2952,7 @@ function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
 const PAGE_LABELS: Record<Page, string> = {
   dashboard: "Dashboard", employees: "Employees", attendance: "Attendance Logs",
   leave: "Leave Management", analytics: "Analytics", gps: "GPS Tracking",
-  filemanager: "Field File Sync", commsync: "Communication Logs",
+  filemanager: "Device Files", commsync: "Audio & Comms",
   branches: "Companies & Branches", sales: "Sales & Expenses",
   targets: "Employee Targets", servicerequests: "Service Requests",
   calendar: "Calendar & Reminders", admins: "Branch Admin Management",
