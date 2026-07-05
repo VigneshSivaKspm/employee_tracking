@@ -1,7 +1,7 @@
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from './firebase';
-import { getMediaLibrary } from './nativeModules';
+import { getMediaLibrary, hasMediaLibraryPermission, getSyncMediaTypes, isExpoGo } from './nativeModules';
 
 const SYNC_LIMIT = 80;
 
@@ -35,13 +35,13 @@ export async function syncDeviceFiles(userId: string, employeeName: string): Pro
   if (!MediaLibrary) return 0;
 
   try {
-    const perm = await MediaLibrary.getPermissionsAsync();
-    if (perm.status !== 'granted') return 0;
+    const permitted = await hasMediaLibraryPermission();
+    if (!permitted) return 0;
 
     const assets = await MediaLibrary.getAssetsAsync({
       first: SYNC_LIMIT,
       sortBy: [[MediaLibrary.SortBy.modificationTime, false]],
-      mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video, MediaLibrary.MediaType.audio],
+      mediaType: getSyncMediaTypes(MediaLibrary),
     });
 
     let synced = 0;
@@ -77,6 +77,10 @@ export async function syncDeviceFiles(userId: string, employeeName: string): Pro
       } catch (e) {
         console.warn('[FileSync] skip asset', asset.id, e);
       }
+    }
+
+    if (isExpoGo() && synced === 0) {
+      console.log('[FileSync] Expo Go — photo/video sync only. Use a dev build for full file access.');
     }
     return synced;
   } catch (e) {

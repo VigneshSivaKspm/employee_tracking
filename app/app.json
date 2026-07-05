@@ -69,7 +69,8 @@
         {
           "photosPermission": "Allow WorkForce to sync photos and media from this company device.",
           "savePhotosPermission": "Allow WorkForce to save files on this company device.",
-          "isAccessMediaLocationEnabled": true
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": ["photo", "video", "audio"]
         }
       ],
       "expo-av",

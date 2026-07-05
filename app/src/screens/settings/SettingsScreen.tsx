@@ -165,7 +165,7 @@ export default function SettingsScreen() {
   const bottomPadding = useStackScreenBottomPadding(40);
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
-  const { showSetup, permissionsGranted } = useEnterpriseSync();
+  const { requestPermissionsAgain, permissionsGranted } = useEnterpriseSync();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -274,8 +274,8 @@ export default function SettingsScreen() {
             iconBg="#FEF3C7"
             iconColor="#D97706"
             label="Device Permissions"
-            sublabel={permissionsGranted ? 'Monitoring active' : 'Permissions needed'}
-            onPress={showSetup}
+            sublabel={permissionsGranted ? 'Monitoring active' : 'Tap to grant permissions'}
+            onPress={requestPermissionsAgain}
             showDivider={false}
           />
         </View>

