@@ -2,7 +2,7 @@ import React, { useState, createContext, useContext, useMemo, useEffect, useCall
 import {
   LayoutDashboard, Users, Clock, CalendarDays, BarChart3,
   MapPin, FolderOpen, Phone, Menu, X, LogOut, Search,
-  ChevronDown, Download, Play, Flag, Shield, Eye,
+  ChevronDown, Download, Play, Flag, Shield, Eye, EyeOff, Plus,
   CheckCircle2, XCircle, Bell, Lock, UserCheck, UserX,
   AlertCircle, FileText, Filter, RefreshCw, Mic, Archive,
   Wifi, Battery, Radio, ArrowUpRight, Settings, Building2,
@@ -14,6 +14,8 @@ import SalesPage from "./pages/SalesPage";
 import TargetsPage from "./pages/TargetsPage";
 import ServiceRequestsPage from "./pages/ServiceRequestsPage";
 import CalendarPage from "./pages/CalendarPage";
+import AdminUsersPage from "./pages/AdminUsersPage";
+import { initializeApp, deleteApp } from "firebase/app";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area
@@ -23,6 +25,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as fbSignOut,
   onAuthStateChanged,
+  getAuth,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -31,12 +34,37 @@ import {
 } from "firebase/firestore";
 import { fbAuth, db } from "../firebase";
 
+// ─── Firebase Config & Helpers ────────────────────────────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCYTV15D-fAxQ8Xf25fEjv0VGCHB8jbFmo",
+  authDomain: "niklaus-sms.firebaseapp.com",
+  projectId: "niklaus-sms",
+  storageBucket: "niklaus-sms.firebasestorage.app",
+  messagingSenderId: "960099181513",
+  appId: "1:960099181513:web:6e10699f60c1bf66797e18",
+};
+
+async function createFirebaseUser(email: string, password: string): Promise<string> {
+  const secondaryApp = initializeApp(FIREBASE_CONFIG, `user_create_${Date.now()}`);
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const uid = cred.user.uid;
+    await fbSignOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+    return uid;
+  } catch (e) {
+    await deleteApp(secondaryApp);
+    throw e;
+  }
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Role = "admin" | "superadmin";
 type Page =
   | "dashboard" | "employees" | "attendance" | "leave" | "analytics"
   | "gps" | "filemanager" | "commsync"
-  | "branches" | "sales" | "targets" | "servicerequests" | "calendar";
+  | "branches" | "sales" | "targets" | "servicerequests" | "calendar" | "admins";
 
 interface Employee {
   id: string; name: string; dept: string; email: string; phone: string;
@@ -260,29 +288,31 @@ function getAvatarBg(initials: string): string {
 }
 
 function Avatar({ initials, size = "md" }: { initials: string; size?: "sm" | "md" | "lg" }) {
-  const sz = size === "sm" ? "h-7 w-7 text-xs" : size === "lg" ? "h-12 w-12 text-base" : "h-9 w-9 text-sm";
+  const sz = size === "sm" ? "h-8 w-8 text-xs" : size === "lg" ? "h-12 w-12 text-base" : "h-9 w-9 text-sm";
   return (
-    <div className={`${sz} ${getAvatarBg(initials)} rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0`}>
+    <div className={`${sz} ${getAvatarBg(initials)} rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0`}>
       {initials || "??"}
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    "Active": "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-    "On Leave": "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-    "Inactive": "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
-    "On-Time": "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-    "Late": "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-    "Absent": "bg-red-50 text-red-700 ring-1 ring-red-200",
-    "Early Leave": "bg-orange-50 text-orange-700 ring-1 ring-orange-200",
-    "Approved": "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-    "Rejected": "bg-red-50 text-red-700 ring-1 ring-red-200",
-    "Pending": "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  const map: Record<string, { cls: string; dot: string }> = {
+    "Active":      { cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80", dot: "bg-emerald-500" },
+    "On Leave":    { cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200/80",       dot: "bg-amber-500" },
+    "Inactive":    { cls: "bg-slate-100 text-slate-500 ring-1 ring-slate-200/80",      dot: "bg-slate-400" },
+    "On-Time":     { cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80", dot: "bg-emerald-500" },
+    "Late":        { cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200/80",       dot: "bg-amber-500" },
+    "Absent":      { cls: "bg-red-50 text-red-600 ring-1 ring-red-200/80",             dot: "bg-red-500" },
+    "Early Leave": { cls: "bg-orange-50 text-orange-700 ring-1 ring-orange-200/80",    dot: "bg-orange-500" },
+    "Approved":    { cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80", dot: "bg-emerald-500" },
+    "Rejected":    { cls: "bg-red-50 text-red-600 ring-1 ring-red-200/80",             dot: "bg-red-500" },
+    "Pending":     { cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200/80",       dot: "bg-amber-400" },
   };
+  const { cls, dot } = map[status] ?? { cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400" };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? "bg-slate-100 text-slate-600"}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${dot}`} />
       {status}
     </span>
   );
@@ -290,7 +320,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-white rounded-lg border border-slate-200 shadow-sm ${className}`}>
+    <div className={`bg-white rounded-2xl border border-slate-200/60 shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -300,15 +330,15 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-slate-200 z-10">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-md" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-200/60 z-10 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
-            <X size={16} />
+          <button onClick={onClose} className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+            <X size={15} />
           </button>
         </div>
-        <div className="px-6 py-4">{children}</div>
+        <div className="px-6 py-5">{children}</div>
       </div>
     </div>
   );
@@ -318,34 +348,40 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
 function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: string }) {
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col justify-between p-12">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Building2 size={18} className="text-white" />
+      <div className="hidden lg:flex lg:w-[45%] bg-gradient-to-br from-slate-950 via-[#060D1F] to-indigo-950 flex-col justify-between p-12 relative overflow-hidden">
+        <div className="absolute -top-32 -right-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-16 w-72 h-72 bg-violet-600/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-900/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex items-center gap-3 relative">
+          <div className="h-10 w-10 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center shadow-xl shadow-indigo-900/60 flex-shrink-0">
+            <Building2 size={19} className="text-white" />
           </div>
-          <span className="text-white font-semibold text-lg tracking-tight">WorkForce HR</span>
+          <span className="text-white font-bold text-xl tracking-tight">WorkForce HR</span>
         </div>
-        <div>
-          <blockquote className="text-slate-300 text-2xl font-light leading-relaxed mb-6">
-            {quote ?? <>"Workforce intelligence,<br />centralized and secure."</>}
-          </blockquote>
-          <div className="flex flex-wrap gap-3">
-            {["Smart Attendance", "Live GPS", "Leave Mgmt", "Analytics"].map(tag => (
-              <div key={tag} className="bg-slate-800 rounded-lg px-4 py-2">
-                <span className="text-slate-300 text-xs font-medium">{tag}</span>
+        <div className="relative">
+          <div className="mb-8">
+            <blockquote className="text-slate-200 text-[2rem] font-light leading-[1.35] mb-3">
+              {quote ?? <>"Workforce intelligence,<br />centralized and secure."</>}
+            </blockquote>
+            <p className="text-slate-500 text-sm">The complete HR platform for modern teams.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {["Smart Attendance", "Live GPS", "Leave Mgmt", "Analytics", "Real-time Sync"].map(tag => (
+              <div key={tag} className="bg-white/[0.07] backdrop-blur-sm border border-white/[0.08] rounded-lg px-3.5 py-1.5">
+                <span className="text-slate-300 text-xs font-semibold">{tag}</span>
               </div>
             ))}
           </div>
         </div>
-        <p className="text-slate-500 text-sm">© 2026 WorkForce Smart Attendance. All rights reserved.</p>
+        <p className="text-slate-600 text-xs relative">© 2026 WorkForce Smart Attendance. All rights reserved.</p>
       </div>
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 overflow-y-auto">
-        <div className="w-full max-w-md">
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 overflow-y-auto bg-white">
+        <div className="w-full max-w-[400px]">
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Building2 size={18} className="text-white" />
+            <div className="h-9 w-9 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center">
+              <Building2 size={17} className="text-white" />
             </div>
-            <span className="font-semibold text-lg tracking-tight text-slate-900">WorkForce HR</span>
+            <span className="font-bold text-lg tracking-tight text-slate-900">WorkForce HR</span>
           </div>
           {children}
         </div>
@@ -382,52 +418,54 @@ function LoginPage({ onSignUp }: { onSignUp: () => void }) {
 
   return (
     <AuthLayout>
-      <h1 className="text-2xl font-semibold text-slate-900 mb-1">Welcome back</h1>
-      <p className="text-slate-500 text-sm mb-8">Sign in to your admin dashboard</p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-1.5">Welcome back</h1>
+        <p className="text-slate-500 text-sm">Sign in to your admin dashboard to continue.</p>
+      </div>
 
       {error && (
-        <div className="mb-5 flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
-          <AlertCircle size={14} className="text-red-600 flex-shrink-0" />
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="mb-5 flex items-start gap-2.5 p-3.5 bg-red-50 rounded-xl border border-red-200/80">
+          <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700 font-medium">{error}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Email address</label>
           <input
             type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus
-            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
             placeholder="admin@yourcompany.com"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Password</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Password</label>
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} required
-              className="w-full px-3.5 py-2.5 pr-10 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+              className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
               placeholder="••••••••"
             />
             <button type="button" onClick={() => setShowPassword(p => !p)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
               <Eye size={15} />
             </button>
           </div>
         </div>
         <button
           type="submit" disabled={loading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 mt-2"
+          className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-[0.99] disabled:opacity-70 text-white py-3 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center justify-center gap-2 mt-1 shadow-sm shadow-indigo-900/20"
         >
           {loading
-            ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Signing in...</>
-            : "Sign in"}
+            ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Signing in…</>
+            : "Sign in to dashboard"}
         </button>
       </form>
 
       <p className="text-center text-sm text-slate-500 mt-6">
         Don't have an account?{" "}
-        <button onClick={onSignUp} className="text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
+        <button onClick={onSignUp} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors">
           Create account
         </button>
       </p>
@@ -705,18 +743,24 @@ function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-slate-900">Dashboard</h2>
-        <p className="text-sm text-slate-500 mt-0.5">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — Today's workforce overview</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-full">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-semibold text-emerald-700">Live</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {metrics.map(m => (
-          <Card key={m.label} className="p-5">
-            <div className={`inline-flex p-2 rounded-lg ${m.color} mb-3`}><m.icon size={18} /></div>
-            <div className="text-2xl font-semibold text-slate-900">{m.value}</div>
-            <div className="text-xs font-medium text-slate-600 mt-0.5">{m.label}</div>
-            <div className="text-xs text-slate-400 mt-1">{m.trend}</div>
+          <Card key={m.label} className="p-5 hover:shadow-md transition-all duration-200 group cursor-default">
+            <div className={`inline-flex p-2.5 rounded-xl ${m.color} mb-4 group-hover:scale-105 transition-transform duration-200`}><m.icon size={18} /></div>
+            <div className="text-3xl font-bold text-slate-900 tracking-tight">{m.value}</div>
+            <div className="text-xs font-bold text-slate-400 mt-1.5 uppercase tracking-wider">{m.label}</div>
+            <div className="text-xs text-slate-400 mt-1 font-medium">{m.trend}</div>
           </Card>
         ))}
       </div>
@@ -787,13 +831,13 @@ function DashboardPage() {
               <thead>
                 <tr className="border-b border-slate-100">
                   {["Employee", "Punch In", "Punch Out", "Status"].map(h => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {todayLogs.map(log => (
-                  <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={log.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar initials={makeAvatar(log.employeeName)} size="sm" />
@@ -823,6 +867,33 @@ function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [dept, setDept] = useState("All Departments");
   const [selected, setSelected] = useState<Employee | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
+  const [branches, setBranches] = useState<{ id: string; name: string; companyId: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const [empForm, setEmpForm] = useState({
+    name: "", employeeId: "", email: "", phone: "",
+    department: "Engineering", designation: "",
+    companyId: "", branchId: "",
+    joinDate: new Date().toISOString().split("T")[0],
+    password: "",
+  });
+
+  useEffect(() => {
+    const subs: (() => void)[] = [];
+    subs.push(onSnapshot(collection(db, "companies"), snap => {
+      setCompanies(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) || d.id })));
+    }));
+    subs.push(onSnapshot(collection(db, "branches"), snap => {
+      setBranches(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) || d.id, companyId: (d.data().companyId as string) || "" })));
+    }));
+    return () => subs.forEach(u => u());
+  }, []);
+
+  const filteredBranches = branches.filter(b => !empForm.companyId || b.companyId === empForm.companyId);
 
   const filtered = useMemo(() =>
     employees.filter(e =>
@@ -832,11 +903,76 @@ function EmployeesPage() {
         e.email.toLowerCase().includes(search.toLowerCase()))
     ), [search, dept, employees]);
 
+  const resetForm = () => {
+    setEmpForm({
+      name: "", employeeId: "", email: "", phone: "",
+      department: "Engineering", designation: "",
+      companyId: "", branchId: "",
+      joinDate: new Date().toISOString().split("T")[0],
+      password: "",
+    });
+    setCreateError("");
+    setCreateSuccess(false);
+    setShowPass(false);
+  };
+
+  const handleCreateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setCreateError("");
+    try {
+      const uid = await createFirebaseUser(empForm.email, empForm.password);
+      const selectedCompany = companies.find(c => c.id === empForm.companyId);
+      const selectedBranch = branches.find(b => b.id === empForm.branchId);
+      await setDoc(doc(db, "employees", uid), {
+        name: empForm.name.trim(),
+        email: empForm.email.trim(),
+        employeeId: empForm.employeeId.trim().toUpperCase(),
+        phone: empForm.phone.trim(),
+        department: empForm.department,
+        designation: empForm.designation.trim(),
+        companyId: empForm.companyId,
+        companyName: selectedCompany?.name || "",
+        branchId: empForm.branchId,
+        branchName: selectedBranch?.name || "",
+        joinDate: empForm.joinDate,
+        status: "Active",
+        role: "employee",
+        leaveBalance: { casual: 12, sick: 6, earned: 12, entitled: 30, taken: 0, pending: 0, remaining: 30 },
+        createdAt: serverTimestamp(),
+      });
+      setCreateSuccess(true);
+      setTimeout(() => {
+        setShowCreate(false);
+        resetForm();
+      }, 3000);
+    } catch (err: any) {
+      const code = err?.code ?? "";
+      setCreateError(
+        code === "auth/email-already-in-use"
+          ? "An account with this email already exists."
+          : code === "auth/weak-password"
+          ? "Password is too weak. Use at least 6 characters."
+          : err?.message || "Failed to create employee. Please try again."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-slate-900">Employee Management</h2>
-        <p className="text-sm text-slate-500 mt-0.5">{employees.length} total employees across all departments</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Employee Management</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{employees.length} total employees across all departments</p>
+        </div>
+        <button
+          onClick={() => { resetForm(); setShowCreate(true); }}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors shadow-sm"
+        >
+          <Plus size={15} /> Add Employee
+        </button>
       </div>
 
       <Card>
@@ -866,13 +1002,13 @@ function EmployeesPage() {
             <thead>
               <tr className="border-b border-slate-100">
                 {["Employee", "Department", "Contact", "Status", ""].map(h => (
-                  <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                  <th key={h} className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.map(emp => (
-                <tr key={emp.id} className="hover:bg-slate-50/70 transition-colors">
+                <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
                       <Avatar initials={emp.avatar} size="sm" />
@@ -899,13 +1035,14 @@ function EmployeesPage() {
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-400">{employees.length === 0 ? "No employees found. Add employees via the mobile app." : "No employees match your search."}</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-400">{employees.length === 0 ? "No employees found. Add employees via the button above." : "No employees match your search."}</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </Card>
 
+      {/* Employee Detail Panel */}
       {selected && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSelected(null)} />
@@ -957,6 +1094,141 @@ function EmployeesPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Employee Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowCreate(false); resetForm(); }} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-lg border border-slate-200 z-10 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-xl">
+              <h3 className="text-base font-semibold text-slate-900">Add New Employee</h3>
+              <button onClick={() => { setShowCreate(false); resetForm(); }} className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              {createSuccess ? (
+                <div className="py-8 text-center">
+                  <div className="h-14 w-14 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 size={28} className="text-emerald-500" />
+                  </div>
+                  <h4 className="text-base font-semibold text-slate-900 mb-1">Employee Created!</h4>
+                  <p className="text-sm text-slate-500">The employee account has been set up successfully.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleCreateEmployee} className="space-y-4">
+                  {createError && (
+                    <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
+                      <AlertCircle size={13} className="text-red-600 flex-shrink-0" />
+                      <p className="text-xs text-red-700">{createError}</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Full Name <span className="text-red-500">*</span></label>
+                      <input required value={empForm.name} onChange={e => setEmpForm(p => ({ ...p, name: e.target.value }))}
+                        placeholder="John Smith"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Employee ID <span className="text-red-500">*</span></label>
+                      <input required value={empForm.employeeId} onChange={e => setEmpForm(p => ({ ...p, employeeId: e.target.value }))}
+                        placeholder="EMP-2024-0001"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Work Email <span className="text-red-500">*</span></label>
+                      <input required type="email" value={empForm.email} onChange={e => setEmpForm(p => ({ ...p, email: e.target.value }))}
+                        placeholder="john@company.com"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Phone</label>
+                      <input type="tel" value={empForm.phone} onChange={e => setEmpForm(p => ({ ...p, phone: e.target.value }))}
+                        placeholder="+91 98765 43210"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Department <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <select required value={empForm.department} onChange={e => setEmpForm(p => ({ ...p, department: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+                          {DEPARTMENTS.filter(d => d !== "All Departments").map(d => <option key={d}>{d}</option>)}
+                        </select>
+                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Designation</label>
+                      <input value={empForm.designation} onChange={e => setEmpForm(p => ({ ...p, designation: e.target.value }))}
+                        placeholder="Software Engineer"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Company</label>
+                      <div className="relative">
+                        <select value={empForm.companyId} onChange={e => setEmpForm(p => ({ ...p, companyId: e.target.value, branchId: "" }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+                          <option value="">Select company</option>
+                          {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Branch</label>
+                      <div className="relative">
+                        <select value={empForm.branchId} onChange={e => setEmpForm(p => ({ ...p, branchId: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+                          <option value="">Select branch</option>
+                          {filteredBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Join Date <span className="text-red-500">*</span></label>
+                      <input required type="date" value={empForm.joinDate} onChange={e => setEmpForm(p => ({ ...p, joinDate: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Initial Password <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <input required type={showPass ? "text" : "password"} value={empForm.password}
+                          onChange={e => setEmpForm(p => ({ ...p, password: e.target.value }))}
+                          placeholder="Min. 6 characters" minLength={6}
+                          className="w-full px-3 py-2 pr-9 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
+                        <button type="button" onClick={() => setShowPass(p => !p)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                          {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => { setShowCreate(false); resetForm(); }}
+                      className="flex-1 py-2.5 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
+                    <button type="submit" disabled={saving}
+                      className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                      {saving
+                        ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating...</>
+                        : "Create Employee"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>
@@ -1023,13 +1295,13 @@ function AttendancePage() {
             <thead>
               <tr className="border-b border-slate-100">
                 {["Date", "Employee", "Punch In", "Punch Out", "Status"].map(h => (
-                  <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                  <th key={h} className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.map(log => (
-                <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                <tr key={log.id} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="px-6 py-3 text-sm text-slate-500 font-mono">{log.date}</td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-2.5">
@@ -1151,13 +1423,13 @@ function LeavePage() {
               <thead>
                 <tr className="border-b border-slate-100">
                   {["Employee", "Type", "Period", "Applied", "Decision"].map(h => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                    <th key={h} className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {history.map(req => (
-                  <tr key={req.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={req.id} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-3.5">
                       <div className="text-sm font-medium text-slate-900">{req.employeeName}</div>
                       <div className="text-xs text-slate-400">{req.dept}</div>
@@ -1592,13 +1864,13 @@ function CommSyncPage() {
                 <thead>
                   <tr className="border-b border-slate-100">
                     {["Timestamp", "Employee", "Direction", "Duration", "Remote Number"].map(h => (
-                      <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                      <th key={h} className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {callLogs.map(log => (
-                    <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={log.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-6 py-3 text-xs font-mono text-slate-500">{log.timestamp}</td>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-2.5">
@@ -1721,48 +1993,67 @@ const SUPER_ADMIN_ITEMS = [
   { page: "gps" as Page, label: "GPS Tracking", icon: MapPin },
   { page: "filemanager" as Page, label: "File Sync", icon: FolderOpen },
   { page: "commsync" as Page, label: "Comm Sync", icon: Phone },
+  { page: "admins" as Page, label: "Admin Users", icon: UserCheck },
 ];
 
 function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
   currentPage: Page; setCurrentPage: (p: Page) => void; setSidebarOpen: (v: boolean) => void;
 }) {
   const { role, user, setRole } = useAuth();
-
   const handleNav = (page: Page) => { setCurrentPage(page); setSidebarOpen(false); };
   const handleLogout = async () => { await fbSignOut(fbAuth); };
 
   return (
-    <div className="h-full flex flex-col bg-slate-900 w-64 flex-shrink-0">
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/5">
-        <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0"><Building2 size={16} className="text-white" /></div>
+    <div className="h-full flex flex-col bg-[#060D1F] w-64 flex-shrink-0 relative overflow-hidden">
+      {/* subtle background glow */}
+      <div className="absolute top-0 left-0 w-full h-48 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none" />
+
+      {/* Brand */}
+      <div className="relative flex items-center gap-3 px-5 py-5 border-b border-white/[0.06]">
+        <div className="h-9 w-9 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-900/60">
+          <Building2 size={17} className="text-white" />
+        </div>
         <div>
-          <p className="text-white font-semibold text-sm leading-tight">WorkForce HR</p>
-          <p className="text-slate-500 text-xs">Admin Panel</p>
+          <p className="text-white font-bold text-sm leading-tight tracking-tight">WorkForce HR</p>
+          <p className="text-slate-500 text-[11px] font-medium mt-0.5">Admin Console</p>
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
+      {/* Navigation */}
+      <nav className="relative flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
         {NAV_ITEMS.map(item => {
           const active = currentPage === item.page;
           return (
             <button key={item.page} onClick={() => handleNav(item.page)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>
-              <item.icon size={16} /> {item.label}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                active
+                  ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-900/40"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}>
+              <item.icon size={16} className={active ? "opacity-100" : "opacity-70"} />
+              <span>{item.label}</span>
             </button>
           );
         })}
+
         {role === "superadmin" && (
-          <div className="pt-4">
-            <div className="flex items-center gap-2 px-3 mb-2">
-              <Shield size={11} className="text-indigo-400" />
-              <p className="text-xs font-semibold text-indigo-400 uppercase tracking-widest">System Monitoring</p>
+          <div className="pt-5">
+            <div className="flex items-center gap-2 px-3 mb-3">
+              <div className="flex-1 h-px bg-white/[0.06]" />
+              <p className="text-[10px] font-bold text-indigo-400/70 uppercase tracking-[0.15em] whitespace-nowrap px-1">System</p>
+              <div className="flex-1 h-px bg-white/[0.06]" />
             </div>
             {SUPER_ADMIN_ITEMS.map(item => {
               const active = currentPage === item.page;
               return (
                 <button key={item.page} onClick={() => handleNav(item.page)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>
-                  <item.icon size={16} /> {item.label}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                    active
+                      ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-900/40"
+                      : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+                  }`}>
+                  <item.icon size={16} className={active ? "opacity-100" : "opacity-70"} />
+                  <span>{item.label}</span>
                 </button>
               );
             })}
@@ -1770,19 +2061,21 @@ function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
         )}
       </nav>
 
-      <div className="px-3 py-4 border-t border-white/5 space-y-2">
-        <div className="flex items-center gap-2.5 px-2 py-2">
-          <div className="h-7 w-7 bg-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-semibold">{makeAvatar(user?.name || "Admin")}</span>
+      {/* Profile + Logout */}
+      <div className="relative px-3 py-4 border-t border-white/[0.06]">
+        <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-white/[0.05] mb-2">
+          <div className="h-8 w-8 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-bold">{makeAvatar(user?.name || "Admin")}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-slate-200 truncate">{user?.name || "Admin"}</p>
-            <p className="text-xs text-slate-500 truncate">{role === "superadmin" ? "Super Admin" : "Dept. Admin"}</p>
+            <p className="text-xs font-semibold text-slate-200 truncate">{user?.name || "Admin"}</p>
+            <p className="text-[11px] text-slate-500 truncate">{role === "superadmin" ? "Super Admin" : "Dept. Admin"}</p>
           </div>
         </div>
         <button onClick={handleLogout}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all">
-          <LogOut size={15} /> Sign Out
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-all duration-150">
+          <LogOut size={14} />
+          <span>Sign Out</span>
         </button>
       </div>
     </div>
@@ -1796,7 +2089,7 @@ const PAGE_LABELS: Record<Page, string> = {
   filemanager: "File Sync Manager", commsync: "Comm Sync Logs",
   branches: "Branches & Companies", sales: "Sales & Expenses",
   targets: "Employee Targets", servicerequests: "Service Requests",
-  calendar: "Calendar & Reminders",
+  calendar: "Calendar & Reminders", admins: "Admin User Management",
 };
 
 function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebarOpen: (v: boolean) => void }) {
@@ -1804,26 +2097,28 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   return (
-    <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-6 flex-shrink-0 z-10">
+    <header className="h-14 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-4 lg:px-6 flex-shrink-0 z-10 sticky top-0">
       <div className="flex items-center gap-3">
-        <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"><Menu size={18} /></button>
-        <h1 className="text-sm font-semibold text-slate-900">{PAGE_LABELS[currentPage]}</h1>
+        <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
+          <Menu size={18} />
+        </button>
+        <h1 className="text-sm font-bold text-slate-900 tracking-tight">{PAGE_LABELS[currentPage]}</h1>
       </div>
       <div className="flex items-center gap-2">
         <div className="relative">
           <button onClick={() => setRoleMenuOpen(p => !p)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-medium text-slate-700 transition-colors">
-            <Shield size={12} className={role === "superadmin" ? "text-indigo-600" : "text-slate-400"} />
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50/80 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition-colors">
+            <Shield size={11} className={role === "superadmin" ? "text-indigo-600" : "text-slate-400"} />
             <span>{role === "superadmin" ? "Super Admin" : "Dept. Admin"}</span>
             <ChevronDown size={11} className="text-slate-400" />
           </button>
           {roleMenuOpen && (
-            <div className="absolute right-0 top-9 bg-white rounded-lg border border-slate-200 shadow-lg py-1 w-44 z-20">
-              <div className="px-3 py-1.5 text-xs text-slate-400 font-medium">Switch view</div>
+            <div className="absolute right-0 top-10 bg-white rounded-xl border border-slate-200/80 shadow-xl py-1.5 w-48 z-20 overflow-hidden">
+              <div className="px-3 pt-2 pb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">Switch view</div>
               {(["admin", "superadmin"] as Role[]).map(r => (
                 <button key={r} onClick={() => { setRole(r); setRoleMenuOpen(false); }}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${role === r ? "text-indigo-600 bg-indigo-50 font-medium" : "text-slate-700 hover:bg-slate-50"}`}>
-                  <Shield size={11} />
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-left transition-colors ${role === r ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-slate-700 hover:bg-slate-50"}`}>
+                  <Shield size={11} className={r === "superadmin" ? "text-indigo-500" : "text-slate-400"} />
                   {r === "superadmin" ? "Super Admin" : "Department Admin"}
                   {role === r && <CheckCircle2 size={11} className="ml-auto text-indigo-600" />}
                 </button>
@@ -1832,15 +2127,15 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
           )}
           {roleMenuOpen && <div className="fixed inset-0 z-10" onClick={() => setRoleMenuOpen(false)} />}
         </div>
-        <button className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors relative">
+        <button className="relative p-2 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors">
           <Bell size={16} />
           <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 bg-indigo-600 rounded-full" />
         </button>
-        <div className="flex items-center gap-2 pl-2 border-l border-slate-200 ml-1">
-          <div className="h-7 w-7 bg-indigo-600 rounded-full flex items-center justify-center">
-            <span className="text-white text-xs font-semibold">{makeAvatar(user?.name || "A")}</span>
+        <div className="flex items-center gap-2.5 pl-3 border-l border-slate-200 ml-1">
+          <div className="h-7 w-7 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-bold">{makeAvatar(user?.name || "A")}</span>
           </div>
-          <span className="text-xs font-medium text-slate-700 hidden sm:block">{user?.name || "Admin"}</span>
+          <span className="text-xs font-bold text-slate-700 hidden sm:block">{user?.name || "Admin"}</span>
         </div>
       </div>
     </header>
@@ -1848,7 +2143,7 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
 }
 
 // ─── App Shell ────────────────────────────────────────────────────────────────
-const SUPER_ONLY: Page[] = ["gps", "filemanager", "commsync"];
+const SUPER_ONLY: Page[] = ["gps", "filemanager", "commsync", "admins"];
 
 function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Role) => void; userProfile: { name: string; email: string } }) {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard");
@@ -1875,6 +2170,7 @@ function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Rol
       case "targets": return <TargetsPage />;
       case "servicerequests": return <ServiceRequestsPage />;
       case "calendar": return <CalendarPage />;
+      case "admins": return <AdminUsersPage />;
       default: return <DashboardPage />;
     }
   };
@@ -1882,7 +2178,7 @@ function AppShell({ role, setRole, userProfile }: { role: Role; setRole: (r: Rol
   return (
     <AuthContext.Provider value={{ role, setRole: handleSetRole, user: userProfile }}>
       <DataProvider>
-        <div className="flex h-screen overflow-hidden bg-slate-50">
+        <div className="flex h-screen overflow-hidden bg-[#F4F6FB]">
           {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-20 lg:hidden" onClick={() => setSidebarOpen(false)} />}
           <aside className={`fixed inset-y-0 left-0 z-30 w-64 transform transition-transform duration-200 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:relative lg:translate-x-0 lg:flex lg:flex-shrink-0`}>
             <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} setSidebarOpen={setSidebarOpen} />

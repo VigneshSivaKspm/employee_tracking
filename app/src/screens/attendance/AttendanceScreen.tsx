@@ -173,13 +173,28 @@ export default function AttendanceScreen() {
         contentContainerStyle={{ paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Blue Gradient Header ── */}
+        {/* ── Header ── */}
         <LinearGradient
-          colors={['#2563EB', '#1D4ED8']}
+          colors={['#1E3A8A', '#2563EB']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={[styles.header, { paddingTop: insets.top + 16 }]}
         >
-          <Text style={styles.headerTitle}>Attendance</Text>
-          <Text style={styles.headerDate}>{formatDateHeader(currentTime)}</Text>
+          <View style={styles.headerDecor1} />
+          <View style={styles.headerDecor2} />
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={styles.headerDate}>{formatDateHeader(currentTime)}</Text>
+              <Text style={styles.headerTitle}>Attendance</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Notifications')}
+              style={styles.notifBtn}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="notifications-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </LinearGradient>
 
         {/* ── Main Card ── */}
@@ -214,7 +229,7 @@ export default function AttendanceScreen() {
                 activeOpacity={0.85}
               >
                 <LinearGradient
-                  colors={['#2563EB', '#1D4ED8']}
+                  colors={['#2563EB', '#1E40AF']}
                   style={styles.punchBtn}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
@@ -382,50 +397,96 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+
   // Header
   header: {
     paddingHorizontal: 20,
     paddingBottom: 80,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 4,
+  headerDecor1: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  headerDecor2: {
+    position: 'absolute',
+    bottom: 10,
+    left: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerDate: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  notifBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   // Main card
   mainCard: {
     backgroundColor: '#FFFFFF',
     marginTop: -60,
     marginHorizontal: 16,
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   centeredContent: {
     alignItems: 'center',
   },
+
   // Clock
   clockDisplay: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontSize: 40,
+    fontWeight: '800',
+    color: '#0F172A',
     letterSpacing: 1,
     marginTop: 8,
   },
   clockSubLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
     marginTop: 4,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
+
   // Location pill
   locationPill: {
     flexDirection: 'row',
@@ -433,52 +494,65 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: '#F1F5F9',
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   locationPillVerified: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
   },
   locationPillText: {
     fontSize: 12,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   locationHint: {
     fontSize: 12,
     color: '#94A3B8',
     marginTop: 8,
     textAlign: 'center',
+    fontWeight: '500',
   },
+
   // Punch button
   punchBtnWrapper: {
     width: '100%',
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   punchBtn: {
-    height: 56,
+    height: 58,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 16,
   },
   punchBtnText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
+
   // Active state
   workingPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    backgroundColor: '#DCFCE7',
+    backgroundColor: '#F0FDF4',
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 7,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
   },
   workingDot: {
     width: 8,
@@ -489,35 +563,42 @@ const styles = StyleSheet.create({
   workingPillText: {
     fontSize: 13,
     color: '#16A34A',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   punchedInAtText: {
     fontSize: 13,
     color: '#64748B',
     marginBottom: 16,
+    fontWeight: '500',
   },
   workingTimer: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontSize: 46,
+    fontWeight: '800',
+    color: '#0F172A',
     letterSpacing: 2,
   },
   workingTimerLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
     marginTop: 4,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
+
   // Clocked out summary
   greatWorkText: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontWeight: '800',
+    color: '#0F172A',
     marginTop: 4,
+    letterSpacing: -0.3,
   },
   dayCompleteLabel: {
     fontSize: 13,
     color: '#64748B',
     marginTop: 6,
+    fontWeight: '500',
   },
   summaryRow: {
     flexDirection: 'row',
@@ -525,53 +606,64 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     width: '100%',
     backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    paddingVertical: 16,
+    borderRadius: 16,
+    paddingVertical: 18,
     paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   summaryItem: {
     alignItems: 'center',
     flex: 1,
-    gap: 4,
+    gap: 5,
   },
   summaryItemLabel: {
-    fontSize: 11,
-    color: '#64748B',
-    fontWeight: '500',
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   summaryItemValue: {
-    fontSize: 13,
-    color: '#1E293B',
-    fontWeight: '700',
+    fontSize: 14,
+    color: '#0F172A',
+    fontWeight: '800',
   },
   summaryDivider: {
     width: 1,
     height: 40,
     backgroundColor: '#E2E8F0',
   },
+
   // Timeline
   timelineCard: {
     backgroundColor: '#FFFFFF',
     margin: 16,
-    borderRadius: 16,
+    marginTop: 16,
+    borderRadius: 20,
     padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   emptyText: {
     fontSize: 13,
     color: '#94A3B8',
     textAlign: 'center',
     paddingVertical: 16,
+    fontWeight: '500',
   },
   timelineItem: {
     flexDirection: 'row',
@@ -580,9 +672,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   timelineIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -590,11 +682,12 @@ const styles = StyleSheet.create({
   },
   timelineConnector: {
     position: 'absolute',
-    left: 17,
-    top: 38,
+    left: 18,
+    top: 40,
     width: 2,
     height: 20,
     backgroundColor: '#E2E8F0',
+    borderRadius: 1,
   },
   timelineContent: {
     flex: 1,
@@ -602,14 +695,16 @@ const styles = StyleSheet.create({
   },
   timelineLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
+    fontWeight: '700',
+    color: '#0F172A',
   },
   timelineTime: {
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
+    fontWeight: '500',
   },
+
   // Quick actions row
   quickActionsRow: {
     flexDirection: 'row',
@@ -619,21 +714,23 @@ const styles = StyleSheet.create({
   },
   quickActionCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
     gap: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 6,
     elevation: 2,
     minWidth: 120,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   quickActionCardLabel: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '700',
     textAlign: 'center',
   },
 });

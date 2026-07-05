@@ -80,13 +80,20 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Blue Gradient Header */}
+          {/* Deep Gradient Header */}
           <LinearGradient
-            colors={['#2563EB', '#1D4ED8']}
+            colors={['#1E3A8A', '#2563EB']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={[styles.header, { paddingTop: insets.top + 40 }]}
           >
+            <View style={styles.headerDecor1} />
+            <View style={styles.headerDecor2} />
+            <View style={styles.logoWrap}>
+              <Ionicons name="briefcase" size={30} color="#FFFFFF" />
+            </View>
             <Text style={styles.headerTitle}>Welcome Back!</Text>
-            <Text style={styles.headerSubtitle}>Login to continue</Text>
+            <Text style={styles.headerSubtitle}>Sign in to your account</Text>
           </LinearGradient>
 
           {/* White Card Body */}
@@ -166,11 +173,21 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
               activeOpacity={0.85}
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Login</Text>
-              )}
+              <LinearGradient
+                colors={['#2563EB', '#1E40AF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryButtonGradient}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Text style={styles.primaryButtonText}>Sign In</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
+                  </>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
             {/* Divider */}
@@ -207,7 +224,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#1E3A8A',
   },
   flex: {
     flex: 1,
@@ -217,56 +234,100 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 28,
-    paddingBottom: 60,
+    paddingBottom: 64,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  headerDecor1: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  headerDecor2: {
+    position: 'absolute',
+    bottom: 0,
+    left: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  logoWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 30,
+    fontWeight: '800',
     color: '#FFFFFF',
     marginBottom: 6,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
   },
   card: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    marginTop: -24,
+    backgroundColor: '#F8FAFC',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    marginTop: -28,
     padding: 28,
+    paddingTop: 32,
     paddingBottom: 40,
   },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEE2E2',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 16,
     gap: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   errorText: {
     color: '#DC2626',
-    fontSize: 14,
+    fontSize: 13,
     flex: 1,
+    fontWeight: '500',
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
     marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 10,
-    height: 52,
-    paddingHorizontal: 14,
+    borderRadius: 14,
+    height: 54,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   inputIcon: {
     marginRight: 10,
@@ -274,8 +335,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 15,
-    color: '#1E293B',
+    color: '#0F172A',
     height: '100%',
+    fontWeight: '500',
   },
   inputFlex: {
     flex: 1,
@@ -287,7 +349,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 16,
+    marginTop: 18,
   },
   checkboxRow: {
     flexDirection: 'row',
@@ -295,9 +357,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 6,
     borderWidth: 1.5,
     borderColor: '#CBD5E1',
     alignItems: 'center',
@@ -309,29 +371,36 @@ const styles = StyleSheet.create({
     borderColor: '#2563EB',
   },
   rememberText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748B',
-  },
-  forgotText: {
-    fontSize: 14,
-    color: '#2563EB',
     fontWeight: '500',
   },
+  forgotText: {
+    fontSize: 13,
+    color: '#2563EB',
+    fontWeight: '700',
+  },
   primaryButton: {
-    backgroundColor: '#2563EB',
-    height: 52,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 28,
+  },
+  primaryButtonGradient: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 24,
+    gap: 8,
   },
   primaryButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.65,
   },
   primaryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   divider: {
     flexDirection: 'row',
@@ -345,30 +414,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
   },
   dividerText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#94A3B8',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   biometricButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 52,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: '#2563EB',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
     gap: 10,
   },
   biometricText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#2563EB',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   signupRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 28,
   },
   signupPrompt: {
     fontSize: 14,
@@ -377,7 +449,7 @@ const styles = StyleSheet.create({
   signupLink: {
     fontSize: 14,
     color: '#2563EB',
-    fontWeight: '600',
+    fontWeight: '800',
   },
 });
 

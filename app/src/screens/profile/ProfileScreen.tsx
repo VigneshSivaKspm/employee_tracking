@@ -145,9 +145,15 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header Gradient */}
         <LinearGradient
-          colors={['#2563EB', '#1D4ED8']}
+          colors={['#1E3A8A', '#2563EB']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
         >
+          {/* Decorative circles */}
+          <View style={styles.decor1} />
+          <View style={styles.decor2} />
+
           <View style={styles.headerContent}>
             <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
               <View style={styles.avatarWrapper}>
@@ -155,7 +161,7 @@ export default function ProfileScreen() {
                   <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
                 </View>
                 <View style={styles.cameraOverlay}>
-                  <Ionicons name="camera" size={14} color="#FFFFFF" />
+                  <Ionicons name="camera" size={13} color="#FFFFFF" />
                 </View>
               </View>
             </TouchableOpacity>
@@ -164,11 +170,13 @@ export default function ProfileScreen() {
             <View style={styles.chipsRow}>
               {department ? (
                 <View style={styles.chip}>
-                  <Text style={styles.chipText}>Dept: {department}</Text>
+                  <Ionicons name="business-outline" size={11} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.chipText}>{department}</Text>
                 </View>
               ) : null}
               {employeeId ? (
                 <View style={styles.chip}>
+                  <Ionicons name="id-card-outline" size={11} color="rgba(255,255,255,0.8)" />
                   <Text style={styles.chipText}>{employeeId}</Text>
                 </View>
               ) : null}
@@ -333,39 +341,65 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F1F5F9',
   },
+
+  // Header
   headerGradient: {
-    paddingBottom: 60,
+    paddingBottom: 70,
     paddingHorizontal: 20,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  decor1: {
+    position: 'absolute',
+    top: -50,
+    right: -50,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  decor2: {
+    position: 'absolute',
+    bottom: -30,
+    left: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   headerContent: {
     alignItems: 'center',
     paddingTop: 10,
+    position: 'relative',
   },
   avatarWrapper: {
     position: 'relative',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 90,
+    height: 90,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   avatarInitials: {
     color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   cameraOverlay: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#1D4ED8',
+    bottom: -4,
+    right: -4,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: '#1E40AF',
     borderWidth: 2,
     borderColor: '#FFFFFF',
     alignItems: 'center',
@@ -374,12 +408,14 @@ const styles = StyleSheet.create({
   headerName: {
     color: '#FFFFFF',
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   headerDesignation: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    fontWeight: '500',
     marginBottom: 16,
   },
   chipsRow: {
@@ -389,46 +425,58 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chip: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 20,
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
   chipText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
+    fontWeight: '600',
   },
+
+  // Cards
   cardsContainer: {
-    marginTop: -20,
+    marginTop: -28,
     marginHorizontal: 16,
-    paddingBottom: 32,
+    paddingBottom: 40,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#1E293B',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 9,
   },
   iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -437,30 +485,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   infoLabel: {
-    fontSize: 12,
-    color: '#64748B',
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
     marginBottom: 2,
   },
   infoValue: {
     fontSize: 14,
-    color: '#1E293B',
-    fontWeight: '500',
+    color: '#0F172A',
+    fontWeight: '600',
   },
   divider: {
     height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 2,
+    backgroundColor: '#F1F5F9',
+    marginLeft: 50,
   },
   documentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 11,
     gap: 10,
   },
   documentText: {
     fontSize: 14,
-    color: '#1E293B',
-    fontWeight: '500',
+    color: '#0F172A',
+    fontWeight: '600',
+    flex: 1,
   },
   settingsRow: {
     flexDirection: 'row',
@@ -469,43 +521,40 @@ const styles = StyleSheet.create({
   },
   settingsLabel: {
     fontSize: 14,
-    color: '#1E293B',
-    fontWeight: '500',
+    color: '#0F172A',
+    fontWeight: '600',
     flex: 1,
     marginLeft: 12,
   },
   badge: {
     backgroundColor: '#FEF3C7',
-    borderRadius: 12,
+    borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 2,
     marginRight: 6,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#D97706',
-    fontWeight: '600',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: '#DC2626',
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderColor: '#FEE2E2',
+    borderRadius: 16,
+    paddingVertical: 15,
     marginBottom: 16,
     gap: 8,
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: '#FFF5F5',
   },
   logoutText: {
     fontSize: 15,
     color: '#DC2626',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
