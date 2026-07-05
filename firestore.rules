@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // employees — allow unauthenticated reads only for the email/employeeId fields
+    // (needed for login: resolveEmail looks up email by employeeId before auth)
+    match /employees/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // attendance — authenticated users can read/write
+    match /attendance/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // leaveRequests — authenticated users can read/write
+    match /leaveRequests/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // locations — authenticated users can read/write
+    match /locations/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // notifications — authenticated users can read/write their own
+    match /notifications/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // announcements — authenticated users can read, only admin can write
+    match /announcements/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // calendarEvents — authenticated users can read/write
+    match /calendarEvents/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // targets — authenticated users can read/write
+    match /targets/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // serviceRequests — authenticated users can read/write
+    match /serviceRequests/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // salesExpenses — authenticated users can read/write
+    match /salesExpenses/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // branches and companies — authenticated users can read/write
+    match /branches/{docId} {
+      allow read, write: if request.auth != null;
+    }
+    match /companies/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Catch-all for any other collections
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

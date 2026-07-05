@@ -6,7 +6,7 @@ import {
   onAuthStateChanged,
   signOut as fbSignOut,
 } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 interface AuthContextValue {
@@ -23,25 +23,9 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function resolveEmail(identifier: string): Promise<string> {
-  if (identifier.includes('@')) {
-    console.log('[Auth] resolveEmail: identifier is email, using as-is:', identifier);
-    return identifier;
-  }
-  console.log('[Auth] resolveEmail: looking up employeeId in Firestore:', identifier);
-  try {
-    const q = query(collection(db, 'employees'), where('employeeId', '==', identifier));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const email = snap.docs[0].data().email as string;
-      console.log('[Auth] resolveEmail: found employee, email:', email);
-      return email;
-    }
-    console.warn('[Auth] resolveEmail: no employee found with employeeId:', identifier);
-  } catch (e: any) {
-    console.error('[Auth] resolveEmail error:', e?.code ?? e?.message);
-  }
-  console.log('[Auth] resolveEmail: falling back to identifier as email');
+// Login now always uses email directly — no Firestore lookup needed before auth
+function resolveEmail(identifier: string): string {
+  console.log('[Auth] resolveEmail:', identifier);
   return identifier;
 }
 
@@ -117,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const email = await resolveEmail(identifier);
+      const email = resolveEmail(identifier);
       console.log('[Auth] Attempting fbSignIn with email:', email);
       await fbSignIn(auth, email, password);
       console.log('[Auth] fbSignIn succeeded — onAuthStateChanged will fire next');
@@ -127,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('[Auth] fbSignIn error code:', code, 'message:', e?.message);
       setError(
         code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found'
-          ? 'Invalid credentials. Please check your Employee ID / Email and password.'
+          ? 'Incorrect email or password. Please try again.'
           : `Login failed (${code}). Please try again.`,
       );
       return false;

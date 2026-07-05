@@ -28,7 +28,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
 
-  const [employeeId, setEmployeeId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -36,24 +36,28 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
-    console.log('[LoginScreen] handleLogin — employeeId:', employeeId.trim(), 'passwordLen:', password.length);
-    if (!employeeId.trim() || !password.trim()) {
-      setError('Please enter Employee ID and Password.');
+    console.log('[LoginScreen] handleLogin — email:', email.trim(), 'passwordLen:', password.length);
+    if (!email.trim() || !password.trim()) {
+      setError('Please enter your email and password.');
+      return;
+    }
+    if (!email.trim().includes('@')) {
+      setError('Please enter a valid email address (e.g. yourname@gmail.com).');
       return;
     }
     setError('');
     setLoading(true);
     try {
-      console.log('[LoginScreen] calling signIn...');
-      const ok = await signIn(employeeId.trim(), password);
+      console.log('[LoginScreen] calling signIn with email:', email.trim());
+      const ok = await signIn(email.trim().toLowerCase(), password);
       console.log('[LoginScreen] signIn returned:', ok);
       if (!ok) {
-        setError('Invalid Employee ID or password. Please try again.');
+        setError('Incorrect email or password. Please try again.');
       }
       // Navigation handled automatically by auth state change
     } catch (err: any) {
       console.error('[LoginScreen] signIn threw:', err?.message);
-      setError(err?.message ?? 'Invalid credentials. Please try again.');
+      setError(err?.message ?? 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -95,17 +99,19 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
               </View>
             ) : null}
 
-            {/* Employee ID */}
-            <Text style={styles.label}>Employee ID</Text>
+            {/* Email */}
+            <Text style={styles.label}>Email Address</Text>
             <View style={styles.inputWrapper}>
-              <Ionicons name="id-card-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+              <Ionicons name="mail-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="EMP-2024-XXXX"
+                placeholder="Enter your email"
                 placeholderTextColor="#CBD5E1"
-                value={employeeId}
-                onChangeText={setEmployeeId}
-                autoCapitalize="characters"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
                 returnKeyType="next"
               />
             </View>
