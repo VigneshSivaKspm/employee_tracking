@@ -32,17 +32,17 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
         "RECORD_AUDIO",
         "READ_CALL_LOG",
         "READ_PHONE_STATE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
         "FOREGROUND_SERVICE",
         "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "USE_FINGERPRINT"
       ]
     },
     "web": {

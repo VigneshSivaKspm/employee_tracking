@@ -90,27 +90,41 @@ export function isWithinOfficeBoundary(coords: GPSCoordinates): boolean {
 
 let trackingInterval: ReturnType<typeof setInterval> | null = null;
 
-export function startBackgroundTracking(userId: string, onCoordinates?: (coords: GPSCoordinates) => void): void {
+interface TrackingOptions {
+  userId: string;
+  employeeName: string;
+  department: string;
+  onCoordinates?: (coords: GPSCoordinates) => void;
+}
+
+export function startBackgroundTracking(options: TrackingOptions | string, onCoordinates?: (coords: GPSCoordinates) => void): void {
   if (trackingInterval) return;
 
-  console.log('[LocationService] Background tracking started for:', userId);
+  const opts: TrackingOptions = typeof options === 'string'
+    ? { userId: options, employeeName: '', department: '', onCoordinates }
+    : options;
 
   trackingInterval = setInterval(async () => {
     const coords = await getCurrentPosition();
     if (!coords) return;
 
     const withinBoundary = isWithinOfficeBoundary(coords);
-    console.log(`[LocationService] Heartbeat — within office: ${withinBoundary}`, coords);
+    opts.onCoordinates?.(coords);
 
-    onCoordinates?.(coords);
-
-    // Firebase write stub:
-    // await db.collection('locationHeartbeats').add({
-    //   userId,
-    //   coordinates: { lat: coords.lat, lng: coords.lng },
-    //   withinBoundary,
-    //   timestamp: new Date().toISOString(),
-    // });
+    // Send to Firebase for admin panel real-time map
+    try {
+      const { recordLocationHeartbeat } = await import('./FirebaseService');
+      await recordLocationHeartbeat(
+        opts.userId,
+        opts.employeeName,
+        opts.department,
+        { lat: coords.lat, lng: coords.lng },
+        100,
+        withinBoundary,
+      );
+    } catch {
+      // Non-fatal — tracking continues even if a heartbeat fails
+    }
   }, TRACKING_INTERVAL_MS);
 }
 
@@ -118,6 +132,5 @@ export function stopBackgroundTracking(): void {
   if (trackingInterval) {
     clearInterval(trackingInterval);
     trackingInterval = null;
-    console.log('[LocationService] Background tracking stopped');
   }
 }

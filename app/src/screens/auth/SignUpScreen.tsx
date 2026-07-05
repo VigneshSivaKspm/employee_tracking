@@ -23,6 +23,8 @@ interface Props {
   navigation: SignUpScreenNavigationProp;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const SignUpScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
 
@@ -41,16 +43,33 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       setError('Please fill in all fields.');
       return;
     }
+    if (!EMAIL_RE.test(email.trim())) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (mobile.trim().length < 10) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
     if (!agreedToTerms) {
       setError('Please agree to the Terms & Conditions.');
       return;
     }
     setError('');
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      navigation.navigate('Permissions');
-    }, 800);
+    // Navigate to Permissions with form data — Firebase account is created there
+    navigation.navigate('Permissions', {
+      signUpData: {
+        fullName: fullName.trim(),
+        employeeId: employeeId.trim().toUpperCase(),
+        email: email.trim().toLowerCase(),
+        phone: mobile.trim(),
+        password,
+      },
+    });
   };
 
   return (
@@ -154,7 +173,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name="lock-closed-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, styles.inputFlex]}
-                placeholder="Create a password"
+                placeholder="Create a password (min 6 chars)"
                 placeholderTextColor="#CBD5E1"
                 value={password}
                 onChangeText={setPassword}
@@ -195,7 +214,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.primaryButtonText}>Sign Up</Text>
+                <Text style={styles.primaryButtonText}>Next: Grant Permissions</Text>
               )}
             </TouchableOpacity>
 

@@ -11,7 +11,7 @@ import { collection, query, where, orderBy, limit, onSnapshot, doc, getDoc } fro
 import { db } from '../services/firebase';
 import type { AttendanceRecord, AttendanceStatus, LeaveRequest, User } from '../types';
 import { recordPunchIn, recordPunchOut, submitLeaveRequest } from '../services/FirebaseService';
-import { getCurrentPosition, isWithinOfficeBoundary } from '../services/LocationService';
+import { getCurrentPosition, isWithinOfficeBoundary, startBackgroundTracking, stopBackgroundTracking } from '../services/LocationService';
 import type { LeaveBalance } from '../types';
 
 interface AttendanceContextValue {
@@ -196,6 +196,11 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
       setWorkingSeconds(0);
       startTimer();
       if (coords) setIsWithinOffice(isWithinOfficeBoundary(coords));
+      startBackgroundTracking({
+        userId,
+        employeeName: user.name,
+        department: user.department,
+      });
     } finally {
       setIsPunching(false);
     }
@@ -214,6 +219,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
         await recordPunchOut(userId, firebaseDocIdRef.current, coords ?? { lat: 0, lng: 0 }, totalHours, clockOutStr);
       }
       stopTimer();
+      stopBackgroundTracking();
     } finally {
       setIsPunching(false);
     }

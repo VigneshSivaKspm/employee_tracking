@@ -86,6 +86,14 @@ export interface MonthlyAnalytics {
 }
 
 // Navigation param lists
+export type SignUpData = {
+  fullName: string;
+  employeeId: string;
+  email: string;
+  phone: string;
+  password: string;
+};
+
 export type AuthStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
@@ -94,7 +102,7 @@ export type AuthStackParamList = {
   OTPVerification: { phone: string; type: 'signup' | 'forgot' };
   ForgotPassword: undefined;
   ResetPassword: { token: string };
-  Permissions: undefined;
+  Permissions: { signUpData?: SignUpData } | undefined;
 };
 
 export type RootStackParamList = {
@@ -106,7 +114,7 @@ export type RootStackParamList = {
   OTPVerification: { phone: string; type: 'signup' | 'forgot' };
   ForgotPassword: undefined;
   ResetPassword: { token: string };
-  Permissions: undefined;
+  Permissions: { signUpData?: SignUpData } | undefined;
 
   // App screens
   Main: undefined;

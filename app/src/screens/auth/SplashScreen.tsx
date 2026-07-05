@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 type SplashScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
@@ -18,12 +19,15 @@ interface Props {
 }
 
 const SplashScreen: React.FC<Props> = ({ navigation }) => {
+  const { isLoading } = useAuth();
+
   useEffect(() => {
+    if (isLoading) return; // Wait until auth state is resolved
     const timer = setTimeout(() => {
       navigation.replace('Onboarding');
     }, 2000);
     return () => clearTimeout(timer);
-  }, [navigation]);
+  }, [isLoading, navigation]);
 
   return (
     <LinearGradient

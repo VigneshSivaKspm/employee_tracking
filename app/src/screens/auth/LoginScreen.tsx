@@ -149,12 +149,6 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            {/* Demo Hint */}
-            <View style={styles.demoHint}>
-              <Ionicons name="information-circle-outline" size={14} color="#64748B" />
-              <Text style={styles.demoText}>Demo: EMP-2024-0047 / password123</Text>
-            </View>
-
             {/* Login Button */}
             <TouchableOpacity
               style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
@@ -312,19 +306,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2563EB',
     fontWeight: '500',
-  },
-  demoHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 16,
-    gap: 6,
-  },
-  demoText: {
-    fontSize: 12,
-    color: '#64748B',
   },
   primaryButton: {
     backgroundColor: '#2563EB',

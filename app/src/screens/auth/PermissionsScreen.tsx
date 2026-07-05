@@ -6,21 +6,28 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
+  Platform,
+  ActivityIndicator,
+  PermissionsAndroid,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../types';
-import { useAuth } from '../../context/AuthContext';
+import { RouteProp } from '@react-navigation/native';
+import * as Location from 'expo-location';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { RootStackParamList, SignUpData } from '../../types';
+import { db } from '../../services/firebase';
+import { firebaseSignUp } from '../../services/FirebaseService';
 
-type PermissionsScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'Permissions'
->;
+type PermissionsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Permissions'>;
+type PermissionsScreenRouteProp = RouteProp<RootStackParamList, 'Permissions'>;
 
 interface Props {
   navigation: PermissionsScreenNavigationProp;
+  route: PermissionsScreenRouteProp;
 }
 
 interface PermissionItem {
@@ -37,62 +44,130 @@ const PERMISSIONS: PermissionItem[] = [
     icon: 'location-outline',
     iconBg: '#2563EB',
     title: 'Location',
-    description: 'To mark accurate attendance',
-  },
-  {
-    key: 'storage',
-    icon: 'document-outline',
-    iconBg: '#16A34A',
-    title: 'Storage',
-    description: 'To upload documents',
+    description: 'To mark accurate attendance based on your office location',
   },
   {
     key: 'camera',
     icon: 'camera-outline',
     iconBg: '#7C3AED',
     title: 'Camera',
-    description: 'To capture photos',
+    description: 'To capture photos for attendance verification',
   },
   {
-    key: 'callLogs',
-    icon: 'call-outline',
-    iconBg: '#D97706',
-    title: 'Call Logs',
-    description: 'To sync call logs (if allowed)',
-  },
-  {
-    key: 'microphone',
-    icon: 'mic-outline',
+    key: 'biometric',
+    icon: 'finger-print',
     iconBg: '#DC2626',
-    title: 'Microphone',
-    description: 'To record audio (if allowed)',
+    title: 'Biometric',
+    description: 'For secure fingerprint / face ID login',
+  },
+  {
+    key: 'storage',
+    icon: 'document-outline',
+    iconBg: '#16A34A',
+    title: 'Storage',
+    description: 'To upload and manage documents',
   },
 ];
 
-const PermissionsScreen: React.FC<Props> = ({ navigation }) => {
-  const [permissions, setPermissions] = useState<Record<string, boolean>>(
+async function requestAllOSPermissions(): Promise<void> {
+  const { status: fg } = await Location.requestForegroundPermissionsAsync();
+  if (fg === 'granted') {
+    await Location.requestBackgroundPermissionsAsync();
+  }
+
+  if (Platform.OS === 'android') {
+    await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+      title: 'Camera Permission',
+      message: 'WorkForce needs camera access for attendance photo verification.',
+      buttonPositive: 'Allow',
+    });
+
+    if ((Platform.Version as number) < 33) {
+      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE, {
+        title: 'Storage Permission',
+        message: 'WorkForce needs storage access to upload documents.',
+        buttonPositive: 'Allow',
+      });
+    }
+  }
+
+  // Biometric — query hardware, no runtime permission needed
+  await LocalAuthentication.hasHardwareAsync();
+}
+
+async function createFirebaseAccount(signUpData: SignUpData): Promise<void> {
+  const result = await firebaseSignUp(signUpData.email, signUpData.password);
+  if (!result) {
+    throw new Error('auth/email-already-in-use');
+  }
+  await setDoc(doc(db, 'employees', result.uid), {
+    name: signUpData.fullName,
+    employeeId: signUpData.employeeId,
+    email: signUpData.email,
+    phone: signUpData.phone,
+    designation: '',
+    department: '',
+    emergencyContact: '',
+    emergencyPhone: '',
+    joinDate: new Date().toISOString().split('T')[0],
+    role: 'employee',
+    status: 'active',
+    leaveBalance: {
+      casual: 12,
+      sick: 6,
+      earned: 12,
+      entitled: 30,
+      taken: 0,
+      pending: 0,
+      remaining: 30,
+    },
+    createdAt: serverTimestamp(),
+  });
+}
+
+const PermissionsScreen: React.FC<Props> = ({ navigation, route }) => {
+  const signUpData = (route.params as any)?.signUpData as SignUpData | undefined;
+
+  const [permStates, setPermStates] = useState<Record<string, boolean>>(
     PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: false }), {})
   );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const togglePermission = (key: string) => {
-    setPermissions((prev) => ({ ...prev, [key]: !prev[key] }));
+    setPermStates((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const { loginWithBiometric } = useAuth();
+  const allEnabled = PERMISSIONS.every((p) => permStates[p.key]);
 
-  const handleAllowAll = async () => {
-    const allOn = PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: true }), {});
-    setPermissions(allOn);
-    await loginWithBiometric();
-    // Navigator auto-switches to authenticated stack once user is set
+  const handleContinue = async (allowAll: boolean) => {
+    setLoading(true);
+    setError('');
+    try {
+      if (allowAll) {
+        setPermStates(PERMISSIONS.reduce((acc, p) => ({ ...acc, [p.key]: true }), {}));
+        await requestAllOSPermissions();
+      }
+
+      if (signUpData) {
+        await createFirebaseAccount(signUpData);
+        // onAuthStateChanged in AuthContext fires → isAuthenticated = true → navigator switches to Main
+      }
+    } catch (err: any) {
+      const msg: string = err?.message ?? '';
+      if (msg.includes('email-already-in-use')) {
+        setError('This email is already registered. Go back and use a different email or login instead.');
+      } else if (msg.includes('weak-password')) {
+        setError('Password is too weak. Go back and choose a stronger password (min 6 characters).');
+      } else if (msg.includes('network-request-failed')) {
+        setError('No internet connection. Please check your network and try again.');
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const handleSkip = async () => {
-    await loginWithBiometric();
-    // Navigator auto-switches to authenticated stack once user is set
-  };
-
-  const allEnabled = PERMISSIONS.every((p) => permissions[p.key]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -116,10 +191,25 @@ const PermissionsScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Intro */}
+        {signUpData ? (
+          <View style={styles.signupBanner}>
+            <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+            <Text style={styles.signupBannerText}>
+              Almost there, {signUpData.fullName.split(' ')[0]}! Grant permissions to complete your account setup.
+            </Text>
+          </View>
+        ) : null}
+
         <Text style={styles.introText}>
           We need the following permissions to provide you a better experience.
         </Text>
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={16} color="#DC2626" />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
 
         {/* Permission Cards */}
         <View style={styles.cardsContainer}>
@@ -133,10 +223,10 @@ const PermissionsScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.permDesc}>{permission.description}</Text>
               </View>
               <Switch
-                value={permissions[permission.key]}
+                value={permStates[permission.key]}
                 onValueChange={() => togglePermission(permission.key)}
                 trackColor={{ false: '#E2E8F0', true: '#BFDBFE' }}
-                thumbColor={permissions[permission.key] ? '#2563EB' : '#FFFFFF'}
+                thumbColor={permStates[permission.key] ? '#2563EB' : '#FFFFFF'}
                 ios_backgroundColor="#E2E8F0"
               />
             </View>
@@ -155,17 +245,34 @@ const PermissionsScreen: React.FC<Props> = ({ navigation }) => {
       {/* Bottom Buttons */}
       <View style={styles.bottomSection}>
         <TouchableOpacity
-          style={[styles.allowAllButton, allEnabled && styles.allowAllButtonActive]}
-          onPress={handleAllowAll}
+          style={[
+            styles.allowAllButton,
+            allEnabled && styles.allowAllButtonActive,
+            loading && styles.disabledButton,
+          ]}
+          onPress={() => handleContinue(true)}
           activeOpacity={0.85}
+          disabled={loading}
         >
-          <Ionicons name="shield-checkmark-outline" size={18} color="#FFFFFF" style={styles.allowIcon} />
-          <Text style={styles.allowAllText}>Allow All</Text>
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="shield-checkmark-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.allowAllText}>
+                {signUpData ? 'Allow All & Create Account' : 'Allow All'}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-          <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+        {!loading && (
+          <TouchableOpacity style={styles.skipButton} onPress={() => handleContinue(false)}>
+            <Text style={styles.skipText}>
+              {signUpData ? 'Skip & Create Account' : 'Skip for now'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -210,12 +317,44 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 16,
   },
+  signupBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  signupBannerText: {
+    fontSize: 14,
+    color: '#15803D',
+    flex: 1,
+    lineHeight: 20,
+  },
   introText: {
     fontSize: 15,
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 18,
   },
   cardsContainer: {
     gap: 12,
@@ -290,7 +429,9 @@ const styles = StyleSheet.create({
   allowAllButtonActive: {
     backgroundColor: '#16A34A',
   },
-  allowIcon: {},
+  disabledButton: {
+    opacity: 0.7,
+  },
   allowAllText: {
     color: '#FFFFFF',
     fontSize: 16,
