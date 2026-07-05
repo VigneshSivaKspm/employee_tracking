@@ -24,20 +24,37 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function resolveEmail(identifier: string): Promise<string> {
-  if (identifier.includes('@')) return identifier;
+  if (identifier.includes('@')) {
+    console.log('[Auth] resolveEmail: identifier is email, using as-is:', identifier);
+    return identifier;
+  }
+  console.log('[Auth] resolveEmail: looking up employeeId in Firestore:', identifier);
   try {
     const q = query(collection(db, 'employees'), where('employeeId', '==', identifier));
     const snap = await getDocs(q);
-    if (!snap.empty) return snap.docs[0].data().email as string;
-  } catch {}
+    if (!snap.empty) {
+      const email = snap.docs[0].data().email as string;
+      console.log('[Auth] resolveEmail: found employee, email:', email);
+      return email;
+    }
+    console.warn('[Auth] resolveEmail: no employee found with employeeId:', identifier);
+  } catch (e: any) {
+    console.error('[Auth] resolveEmail error:', e?.code ?? e?.message);
+  }
+  console.log('[Auth] resolveEmail: falling back to identifier as email');
   return identifier;
 }
 
 async function fetchUserProfile(uid: string): Promise<User | null> {
+  console.log('[Auth] fetchUserProfile uid:', uid);
   try {
     const snap = await getDoc(doc(db, 'employees', uid));
-    if (!snap.exists()) return null;
+    if (!snap.exists()) {
+      console.warn('[Auth] fetchUserProfile: no Firestore doc for uid:', uid);
+      return null;
+    }
     const d = snap.data();
+    console.log('[Auth] fetchUserProfile: loaded profile, name:', d.name, 'employeeId:', d.employeeId);
     return {
       id: uid,
       name: d.name || '',
@@ -50,7 +67,8 @@ async function fetchUserProfile(uid: string): Promise<User | null> {
       emergencyPhone: d.emergencyPhone || '',
       joinDate: d.joinDate || '',
     };
-  } catch {
+  } catch (e: any) {
+    console.error('[Auth] fetchUserProfile error:', e?.code ?? e?.message);
     return null;
   }
 }
@@ -61,42 +79,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('[Auth] Setting up onAuthStateChanged listener');
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log('[Auth] onAuthStateChanged fired — firebaseUser:', firebaseUser ? firebaseUser.uid : 'null');
       if (firebaseUser) {
         const profile = await fetchUserProfile(firebaseUser.uid);
-        setUser(profile ?? {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Employee',
-          email: firebaseUser.email || '',
-          employeeId: '',
-          designation: '',
-          department: '',
-          phone: '',
-          emergencyContact: '',
-          emergencyPhone: '',
-          joinDate: '',
-        });
+        if (profile) {
+          console.log('[Auth] Profile loaded, setting user. isAuthenticated will be true');
+          setUser(profile);
+        } else {
+          console.log('[Auth] No Firestore profile, using Firebase user fallback');
+          setUser({
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || 'Employee',
+            email: firebaseUser.email || '',
+            employeeId: '',
+            designation: '',
+            department: '',
+            phone: '',
+            emergencyContact: '',
+            emergencyPhone: '',
+            joinDate: '',
+          });
+        }
       } else {
+        console.log('[Auth] No Firebase user — setting user to null');
         setUser(null);
       }
       setIsLoading(false);
+      console.log('[Auth] isLoading set to false');
     });
     return unsub;
   }, []);
 
   const login = useCallback(async (identifier: string, password: string): Promise<boolean> => {
+    console.log('[Auth] login() called with identifier:', identifier);
     setIsLoading(true);
     setError(null);
     try {
       const email = await resolveEmail(identifier);
+      console.log('[Auth] Attempting fbSignIn with email:', email);
       await fbSignIn(auth, email, password);
+      console.log('[Auth] fbSignIn succeeded — onAuthStateChanged will fire next');
       return true;
     } catch (e: any) {
       const code = e?.code ?? '';
+      console.error('[Auth] fbSignIn error code:', code, 'message:', e?.message);
       setError(
         code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found'
           ? 'Invalid credentials. Please check your Employee ID / Email and password.'
-          : 'Login failed. Please try again.',
+          : `Login failed (${code}). Please try again.`,
       );
       return false;
     } finally {
@@ -125,7 +157,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // If biometric passed (or no biometric), restore existing Firebase session
       if (auth.currentUser) {
         const profile = await fetchUserProfile(auth.currentUser.uid);
         if (profile) {
@@ -145,13 +176,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async (): Promise<void> => {
+    console.log('[Auth] logout() called');
     setIsLoading(true);
     try {
       await fbSignOut(auth);
+      console.log('[Auth] fbSignOut done');
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  console.log('[Auth] AuthProvider render — isAuthenticated:', !!user, 'isLoading:', isLoading);
 
   return (
     <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, error, login, signIn: login, loginWithBiometric, logout, signOut: logout }}>

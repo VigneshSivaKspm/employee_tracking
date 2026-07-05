@@ -36,6 +36,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
+    console.log('[LoginScreen] handleLogin — employeeId:', employeeId.trim(), 'passwordLen:', password.length);
     if (!employeeId.trim() || !password.trim()) {
       setError('Please enter Employee ID and Password.');
       return;
@@ -43,12 +44,15 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     setError('');
     setLoading(true);
     try {
+      console.log('[LoginScreen] calling signIn...');
       const ok = await signIn(employeeId.trim(), password);
+      console.log('[LoginScreen] signIn returned:', ok);
       if (!ok) {
         setError('Invalid Employee ID or password. Please try again.');
       }
       // Navigation handled automatically by auth state change
     } catch (err: any) {
+      console.error('[LoginScreen] signIn threw:', err?.message);
       setError(err?.message ?? 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
