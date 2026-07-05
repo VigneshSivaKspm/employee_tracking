@@ -53,16 +53,16 @@ type TabIconName = keyof typeof Ionicons.glyphMap;
 
 const TAB_ICONS: Record<keyof BottomTabParamList, { active: TabIconName; inactive: TabIconName }> = {
   Dashboard: { active: 'home', inactive: 'home-outline' },
-  Attendance: { active: 'time', inactive: 'time-outline' },
-  Leave: { active: 'calendar', inactive: 'calendar-outline' },
+  ServiceRequests: { active: 'construct', inactive: 'construct-outline' },
+  Targets: { active: 'trophy', inactive: 'trophy-outline' },
   Analytics: { active: 'bar-chart', inactive: 'bar-chart-outline' },
   Profile: { active: 'person', inactive: 'person-outline' },
 };
 
 const TAB_LABELS: Record<keyof BottomTabParamList, string> = {
   Dashboard: 'Home',
-  Attendance: 'Attendance',
-  Leave: 'Leave',
+  ServiceRequests: 'Requests',
+  Targets: 'Targets',
   Analytics: 'Analytics',
   Profile: 'Profile',
 };
@@ -102,8 +102,8 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Attendance" component={AttendanceScreen} />
-      <Tab.Screen name="Leave" component={LeaveManagementScreen} />
+      <Tab.Screen name="ServiceRequests" component={ServiceRequestScreen} />
+      <Tab.Screen name="Targets" component={TargetsScreen} />
       <Tab.Screen name="Analytics" component={AnalyticsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -118,6 +118,18 @@ function AuthenticatedNavigator() {
     <AttendanceProvider user={user}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
+
+        {/* Full-screen tab screens accessible from dashboard */}
+        <Stack.Screen
+          name="Attendance"
+          component={AttendanceScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Leave"
+          component={LeaveManagementScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
 
         {/* Leave screens */}
         <Stack.Screen

@@ -7,6 +7,9 @@ import {
   StyleSheet,
   Switch,
   Alert,
+  Linking,
+  Modal,
+  ScrollView as RNScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +21,77 @@ import type { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+// ─── Privacy Policy & Terms text ───────────────────────────────────────────
+
+const PRIVACY_POLICY = `Privacy Policy
+Last updated: July 2026
+
+1. INTRODUCTION
+WorkForce ("we", "our", or "the App") respects your privacy. This Privacy Policy explains how we collect, use, and safeguard your information when you use our employee attendance and management application.
+
+2. INFORMATION WE COLLECT
+• Account Data: Name, email address, employee ID, phone number, department, and designation provided at registration.
+• Attendance Data: Clock-in/clock-out times, location (if enabled), and attendance history.
+• Device Data: Device type, OS version, and app version for diagnostics.
+• Usage Data: Feature interactions to improve the app experience.
+
+3. HOW WE USE YOUR INFORMATION
+• To manage your attendance records and generate reports.
+• To send notifications about leave approvals, announcements, and payroll.
+• To authenticate your identity securely.
+• To provide HR and management analytics.
+
+4. DATA STORAGE & SECURITY
+All data is stored on Google Firebase with industry-standard encryption. We do not sell your personal data to third parties.
+
+5. DATA RETENTION
+Attendance and leave records are retained for the duration of your employment plus 5 years, as required by applicable labour laws.
+
+6. YOUR RIGHTS
+You may request access to, correction of, or deletion of your personal data by contacting your HR administrator or emailing support@workforce.app.
+
+7. CHANGES TO THIS POLICY
+We may update this policy periodically. Continued use of the App constitutes acceptance of the updated policy.
+
+8. CONTACT
+Questions? Contact us at support@workforce.app.`;
+
+const TERMS_AND_CONDITIONS = `Terms & Conditions
+Last updated: July 2026
+
+1. ACCEPTANCE OF TERMS
+By using the WorkForce app, you agree to these Terms & Conditions. If you do not agree, please discontinue use immediately.
+
+2. USE OF THE APPLICATION
+• This application is provided exclusively for employees of organisations that have subscribed to WorkForce.
+• You must not share your login credentials with any other person.
+• Misuse of the app (e.g., falsifying attendance) may result in disciplinary action.
+
+3. ATTENDANCE & LEAVE
+• Attendance recorded through this app is considered official and may be used for payroll calculations.
+• Leave requests submitted are subject to approval by your line manager or HR.
+• Approved leave balances are managed by your organisation's HR policy.
+
+4. INTELLECTUAL PROPERTY
+The WorkForce app, including its design, code, and content, is owned by the developer and may not be reproduced or distributed without permission.
+
+5. LIMITATION OF LIABILITY
+We are not liable for losses arising from incorrect attendance data entered by users, system downtime, or third-party service outages (e.g., Firebase).
+
+6. PRIVACY
+Your use of this app is also governed by our Privacy Policy, which is incorporated into these Terms by reference.
+
+7. MODIFICATIONS
+We reserve the right to modify these Terms at any time. Continued use after changes constitutes acceptance.
+
+8. GOVERNING LAW
+These Terms are governed by the laws of India. Any disputes shall be resolved in the courts of jurisdiction applicable to the organisation's registered address.
+
+9. CONTACT
+For queries, contact support@workforce.app.`;
+
+// ─── Reusable Row ───────────────────────────────────────────────────────────
 
 interface SettingsRowProps {
   icon: string;
@@ -55,12 +129,44 @@ function SettingsRow({ icon, iconBg, iconColor, label, sublabel, onPress, rightE
   );
 }
 
+// ─── Text Modal ─────────────────────────────────────────────────────────────
+
+interface TextModalProps {
+  visible: boolean;
+  title: string;
+  content: string;
+  onClose: () => void;
+}
+
+function TextModal({ visible, title, content, onClose }: TextModalProps) {
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={styles.modalContainer}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} activeOpacity={0.7}>
+            <Ionicons name="close" size={22} color="#1E293B" />
+          </TouchableOpacity>
+        </View>
+        <RNScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+          <Text style={styles.modalBody}>{content}</Text>
+        </RNScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
+
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
 
   function handleLogout() {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -73,8 +179,26 @@ export default function SettingsScreen() {
     ]);
   }
 
-  function showComingSoon(feature: string) {
-    Alert.alert('Coming Soon', `${feature} will be available in a future update.`);
+  function handleHelpSupport() {
+    Linking.openURL('mailto:support@workforce.app?subject=Help%20%26%20Support').catch(() => {
+      Alert.alert('Cannot Open Mail', 'Please email us at support@workforce.app');
+    });
+  }
+
+  function handleRateApp() {
+    Linking.openURL('market://details?id=com.worktrack.attendance').catch(() => {
+      Linking.openURL('https://play.google.com/store/apps/details?id=com.worktrack.attendance').catch(() => {
+        Alert.alert('Cannot Open Store', 'Please search for "WorkForce" on the Play Store.');
+      });
+    });
+  }
+
+  function handleAboutApp() {
+    Alert.alert(
+      'About WorkForce',
+      'WorkForce v1.0.0\nSmart Attendance & Employee Management\n\nBuilt with Expo SDK 54 & Firebase',
+      [{ text: 'OK' }],
+    );
   }
 
   return (
@@ -97,7 +221,7 @@ export default function SettingsScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Section: Preferences */}
@@ -128,7 +252,9 @@ export default function SettingsScreen() {
             rightElement={
               <Switch
                 value={darkMode}
-                onValueChange={() => showComingSoon('Dark Mode')}
+                onValueChange={() =>
+                  Alert.alert('Coming Soon', 'Dark Mode will be available in a future update.')
+                }
                 trackColor={{ false: '#E2E8F0', true: '#BFDBFE' }}
                 thumbColor={darkMode ? '#2563EB' : '#94A3B8'}
                 disabled
@@ -145,7 +271,7 @@ export default function SettingsScreen() {
             iconBg="#DCFCE7"
             iconColor="#16A34A"
             label="Privacy Policy"
-            onPress={() => showComingSoon('Privacy Policy')}
+            onPress={() => setPrivacyVisible(true)}
           />
           <SettingsRow
             icon="document-text-outline"
@@ -153,7 +279,7 @@ export default function SettingsScreen() {
             iconColor="#2563EB"
             label="Terms & Conditions"
             showDivider={false}
-            onPress={() => showComingSoon('Terms & Conditions')}
+            onPress={() => setTermsVisible(true)}
           />
         </View>
 
@@ -165,15 +291,17 @@ export default function SettingsScreen() {
             iconBg="#FEF3C7"
             iconColor="#D97706"
             label="Help & Support"
-            onPress={() => showComingSoon('Help & Support')}
+            sublabel="support@workforce.app"
+            onPress={handleHelpSupport}
           />
           <SettingsRow
             icon="star-outline"
             iconBg="#FFF7ED"
             iconColor="#EA580C"
             label="Rate this App"
+            sublabel="Play Store"
             showDivider={false}
-            onPress={() => showComingSoon('Rate this App')}
+            onPress={handleRateApp}
           />
         </View>
 
@@ -186,14 +314,14 @@ export default function SettingsScreen() {
             iconColor="#2563EB"
             label="About App"
             sublabel="WorkForce – Smart Attendance"
-            onPress={() => showComingSoon('About App')}
+            onPress={handleAboutApp}
           />
           <SettingsRow
             icon="code-slash-outline"
             iconBg="#F1F5F9"
             iconColor="#64748B"
             label="Version"
-            sublabel="1.0.0"
+            sublabel="1.0.0 (Expo SDK 54)"
             showDivider={false}
           />
         </View>
@@ -204,6 +332,22 @@ export default function SettingsScreen() {
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Privacy Policy Modal */}
+      <TextModal
+        visible={privacyVisible}
+        title="Privacy Policy"
+        content={PRIVACY_POLICY}
+        onClose={() => setPrivacyVisible(false)}
+      />
+
+      {/* Terms & Conditions Modal */}
+      <TextModal
+        visible={termsVisible}
+        title="Terms & Conditions"
+        content={TERMS_AND_CONDITIONS}
+        onClose={() => setTermsVisible(false)}
+      />
     </View>
   );
 }
@@ -220,7 +364,7 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
   scrollView: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 40 },
+  scrollContent: { padding: 16 },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -277,4 +421,43 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   logoutText: { fontSize: 16, fontWeight: '700', color: '#DC2626' },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalBody: {
+    fontSize: 14,
+    color: '#334155',
+    lineHeight: 22,
+  },
 });

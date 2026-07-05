@@ -15,6 +15,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../services/firebase';
 
 type RootStackParamList = {
   EditProfile: undefined;
@@ -30,7 +33,7 @@ type RootStackParamList = {
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface FormField {
-  key: string;
+  key: 'name' | 'employeeId' | 'email' | 'phone' | 'department' | 'designation';
   label: string;
   placeholder: string;
   editable: boolean;
@@ -39,46 +42,73 @@ interface FormField {
 
 const FORM_FIELDS: FormField[] = [
   { key: 'name', label: 'Full Name', placeholder: 'Enter your full name', editable: true },
-  { key: 'employeeId', label: 'Employee ID', placeholder: 'EMP001234', editable: false },
-  { key: 'email', label: 'Email Address', placeholder: 'Enter your email', editable: true, keyboardType: 'email-address' },
+  { key: 'employeeId', label: 'Employee ID', placeholder: '', editable: false },
+  { key: 'email', label: 'Email Address', placeholder: '', editable: false, keyboardType: 'email-address' },
   { key: 'phone', label: 'Mobile Number', placeholder: 'Enter mobile number', editable: true, keyboardType: 'phone-pad' },
-  { key: 'department', label: 'Department', placeholder: 'Design Team', editable: false },
-  { key: 'designation', label: 'Designation', placeholder: 'UI/UX Designer', editable: false },
+  { key: 'department', label: 'Department', placeholder: '', editable: false },
+  { key: 'designation', label: 'Designation', placeholder: '', editable: false },
 ];
+
+interface FormState {
+  name: string;
+  employeeId: string;
+  email: string;
+  phone: string;
+  department: string;
+  designation: string;
+}
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
-  const [form, setForm] = useState({
-    name: 'Alex Johnson',
-    employeeId: 'EMP001234',
-    email: 'alex.johnson@email.com',
-    phone: '+91 98765 43210',
-    department: 'Design Team',
-    designation: 'UI/UX Designer',
+  const [form, setForm] = useState<FormState>({
+    name: user?.name ?? '',
+    employeeId: user?.employeeId ?? '',
+    email: user?.email ?? '',
+    phone: user?.phone ?? '',
+    department: user?.department ?? '',
+    designation: user?.designation ?? '',
   });
+  const [saving, setSaving] = useState(false);
 
-  const getInitials = (name: string) =>
-    name
+  const getInitials = (name: string): string => {
+    if (!name || !name.trim()) return '?';
+    return name
       .split(' ')
       .map((n) => n[0])
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) {
       Alert.alert('Validation Error', 'Full name cannot be empty.');
       return;
     }
-    if (!form.email.trim() || !form.email.includes('@')) {
-      Alert.alert('Validation Error', 'Please enter a valid email address.');
+    if (!user?.id) {
+      Alert.alert('Error', 'User session not found. Please log in again.');
       return;
     }
-    Alert.alert('Success', 'Your profile has been updated successfully!', [
-      { text: 'OK', onPress: () => navigation.goBack() },
-    ]);
+
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'employees', user.id), {
+        name: form.name.trim(),
+        phone: form.phone.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      Alert.alert('Success', 'Your profile has been updated successfully!', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'An error occurred. Please try again.';
+      Alert.alert('Save Failed', message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -86,7 +116,7 @@ export default function EditProfileScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* ── Gradient Header ── */}
+      {/* Gradient Header */}
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
@@ -95,8 +125,8 @@ export default function EditProfileScreen() {
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Profile</Text>
-        <TouchableOpacity onPress={handleSave} style={styles.saveBtn} activeOpacity={0.7}>
-          <Text style={styles.saveText}>Save</Text>
+        <TouchableOpacity onPress={handleSave} style={styles.saveBtn} activeOpacity={0.7} disabled={saving}>
+          <Text style={styles.saveText}>{saving ? '...' : 'Save'}</Text>
         </TouchableOpacity>
       </LinearGradient>
 
@@ -104,32 +134,34 @@ export default function EditProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
       >
-        {/* ── Avatar Section ── */}
+        {/* Avatar Section */}
         <View style={styles.avatarCard}>
           <View style={styles.avatarCircle}>
             <Text style={styles.avatarInitials}>{getInitials(form.name)}</Text>
           </View>
-          <TouchableOpacity style={styles.changePhotoBtn} activeOpacity={0.7}>
-            <Ionicons name="camera-outline" size={16} color="#2563EB" />
-            <Text style={styles.changePhotoText}>Change Photo</Text>
-          </TouchableOpacity>
+          <Text style={styles.avatarNote}>Only Name and Mobile Number can be edited</Text>
         </View>
 
-        {/* ── Form Section ── */}
+        {/* Form Section */}
         <View style={styles.formCard}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
           {FORM_FIELDS.map((field, index) => (
-            <View key={field.key} style={[styles.inputGroup, index < FORM_FIELDS.length - 1 && styles.inputGroupBorder]}>
+            <View
+              key={field.key}
+              style={[styles.inputGroup, index < FORM_FIELDS.length - 1 && styles.inputGroupBorder]}
+            >
               <Text style={styles.inputLabel}>{field.label}</Text>
               <TextInput
                 style={[
                   styles.textInput,
                   !field.editable && styles.textInputDisabled,
                 ]}
-                value={form[field.key as keyof typeof form]}
-                onChangeText={(text) =>
-                  field.editable && setForm((prev) => ({ ...prev, [field.key]: text }))
-                }
+                value={form[field.key]}
+                onChangeText={(text) => {
+                  if (field.editable) {
+                    setForm((prev) => ({ ...prev, [field.key]: text }));
+                  }
+                }}
                 placeholder={field.placeholder}
                 placeholderTextColor="#94A3B8"
                 editable={field.editable}
@@ -140,9 +172,14 @@ export default function EditProfileScreen() {
           ))}
         </View>
 
-        {/* ── Save Button ── */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.8}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
+        {/* Save Button */}
+        <TouchableOpacity
+          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          activeOpacity={0.8}
+          disabled={saving}
+        >
+          <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -213,15 +250,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2563EB',
   },
-  changePhotoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  changePhotoText: {
-    fontSize: 14,
-    color: '#2563EB',
-    fontWeight: '600',
+  avatarNote: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
   },
   formCard: {
     backgroundColor: '#FFFFFF',
@@ -278,6 +310,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
   },
   saveButtonText: {
     fontSize: 16,

@@ -31,19 +31,16 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const mockUser = {
-  name: 'Alex Johnson',
-  email: 'alex.johnson@email.com',
-  employeeId: 'EMP001234',
-  designation: 'UI/UX Designer',
-  department: 'Design Team',
-  phone: '+91 98765 43210',
-  emergencyContact: 'Jane Johnson',
-  emergencyPhone: '+91 98765 12345',
-  joinDate: '24 Jun 2026',
-  bankAccount: 'XXXX XXXX 4521',
-  ifscCode: 'HDFC0001234',
-};
+function formatJoinDate(raw: string): string {
+  if (!raw) return 'Not set';
+  // Handle ISO date strings like 2026-07-05
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = d.toLocaleString('en-GB', { month: 'short' });
+  const year = d.getFullYear();
+  return `${day} ${month} ${year}`;
+}
 
 interface InfoRowProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -60,7 +57,7 @@ function InfoRow({ iconName, iconBg, label, value }: InfoRowProps) {
       </View>
       <View style={styles.infoTextBlock}>
         <Text style={styles.infoLabel}>{label}</Text>
-        <Text style={styles.infoValue}>{value}</Text>
+        <Text style={styles.infoValue}>{value || 'Not set'}</Text>
       </View>
     </View>
   );
@@ -97,16 +94,25 @@ function SettingsRow({ iconName, iconBg, label, onPress, badge, isLast }: Settin
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { signOut } = useAuth() as any;
+  const { user, signOut } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const getInitials = (name: string) =>
-    name
+  const getInitials = (name: string): string => {
+    if (!name || !name.trim()) return '?';
+    return name
       .split(' ')
       .map((n) => n[0])
       .join('')
       .toUpperCase()
       .slice(0, 2);
+  };
+
+  const handleAvatarPress = () => {
+    Alert.alert(
+      'Upload Photo',
+      'Photo upload requires Firebase Storage setup in the admin console. Feature coming in next update.',
+    );
+  };
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -115,59 +121,82 @@ export default function ProfileScreen() {
         text: 'Logout',
         style: 'destructive',
         onPress: async () => {
-          if (signOut) await signOut();
-          // Navigator auto-switches to auth stack — no explicit navigate needed
+          await signOut();
         },
       },
     ]);
   };
 
+  const name = user?.name ?? '';
+  const email = user?.email ?? '';
+  const employeeId = user?.employeeId ?? '';
+  const designation = user?.designation ?? '';
+  const department = user?.department ?? '';
+  const phone = user?.phone ?? '';
+  const emergencyContact = user?.emergencyContact ?? '';
+  const emergencyPhone = user?.emergencyPhone ?? '';
+  const joinDate = formatJoinDate(user?.joinDate ?? '');
+  const bankAccount = user?.bankAccount ?? '';
+  const bankName = user?.bankName ?? '';
+  const ifscCode = user?.ifscCode ?? '';
+
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* ── Header Gradient ── */}
+        {/* Header Gradient */}
         <LinearGradient
           colors={['#2563EB', '#1D4ED8']}
           style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
         >
           <View style={styles.headerContent}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitials}>{getInitials(mockUser.name)}</Text>
-            </View>
-            <Text style={styles.headerName}>{mockUser.name}</Text>
-            <Text style={styles.headerDesignation}>{mockUser.designation}</Text>
+            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
+              <View style={styles.avatarWrapper}>
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
+                </View>
+                <View style={styles.cameraOverlay}>
+                  <Ionicons name="camera" size={14} color="#FFFFFF" />
+                </View>
+              </View>
+            </TouchableOpacity>
+            <Text style={styles.headerName}>{name || 'Employee'}</Text>
+            <Text style={styles.headerDesignation}>{designation || 'Designation not set'}</Text>
             <View style={styles.chipsRow}>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Department: {mockUser.department}</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>{mockUser.employeeId}</Text>
-              </View>
+              {department ? (
+                <View style={styles.chip}>
+                  <Text style={styles.chipText}>Dept: {department}</Text>
+                </View>
+              ) : null}
+              {employeeId ? (
+                <View style={styles.chip}>
+                  <Text style={styles.chipText}>{employeeId}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </LinearGradient>
 
-        {/* ── Info Cards ── */}
+        {/* Info Cards */}
         <View style={styles.cardsContainer}>
 
           {/* Personal Details */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Personal Details</Text>
-            <InfoRow iconName="person-outline" iconBg="#2563EB" label="Full Name" value={mockUser.name} />
+            <InfoRow iconName="person-outline" iconBg="#2563EB" label="Full Name" value={name} />
             <View style={styles.divider} />
-            <InfoRow iconName="id-card-outline" iconBg="#7C3AED" label="Employee ID" value={mockUser.employeeId} />
+            <InfoRow iconName="id-card-outline" iconBg="#7C3AED" label="Employee ID" value={employeeId} />
             <View style={styles.divider} />
-            <InfoRow iconName="mail-outline" iconBg="#16A34A" label="Email" value={mockUser.email} />
+            <InfoRow iconName="mail-outline" iconBg="#16A34A" label="Email" value={email} />
             <View style={styles.divider} />
-            <InfoRow iconName="call-outline" iconBg="#D97706" label="Mobile" value={mockUser.phone} />
+            <InfoRow iconName="call-outline" iconBg="#D97706" label="Mobile" value={phone} />
           </View>
 
           {/* Contact Information */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Contact Information</Text>
-            <InfoRow iconName="location-outline" iconBg="#2563EB" label="Department" value={mockUser.department} />
+            <InfoRow iconName="location-outline" iconBg="#2563EB" label="Department" value={department} />
             <View style={styles.divider} />
-            <InfoRow iconName="business-outline" iconBg="#16A34A" label="Join Date" value={mockUser.joinDate} />
+            <InfoRow iconName="business-outline" iconBg="#16A34A" label="Join Date" value={joinDate} />
           </View>
 
           {/* Emergency Contact */}
@@ -176,27 +205,44 @@ export default function ProfileScreen() {
             <InfoRow
               iconName="person-circle-outline"
               iconBg="#DC2626"
-              label={mockUser.emergencyContact}
-              value={mockUser.emergencyPhone}
+              label={emergencyContact || 'Emergency Contact'}
+              value={emergencyPhone || 'Not set'}
             />
           </View>
 
           {/* Bank Details */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Bank Details</Text>
-            <InfoRow iconName="card-outline" iconBg="#2563EB" label="Bank Account" value={mockUser.bankAccount} />
+            <InfoRow
+              iconName="card-outline"
+              iconBg="#2563EB"
+              label="Bank Account"
+              value={bankAccount || 'Not configured'}
+            />
             <View style={styles.divider} />
-            <InfoRow iconName="document-text-outline" iconBg="#7C3AED" label="IFSC Code" value={mockUser.ifscCode} />
+            <InfoRow
+              iconName="business-outline"
+              iconBg="#16A34A"
+              label="Bank Name"
+              value={bankName || 'Not configured'}
+            />
+            <View style={styles.divider} />
+            <InfoRow
+              iconName="document-text-outline"
+              iconBg="#7C3AED"
+              label="IFSC Code"
+              value={ifscCode || 'Not configured'}
+            />
           </View>
 
           {/* Documents */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Documents</Text>
-            {['Aadhaar Card', 'PAN Card', 'Offer Letter', 'Salary Slips'].map((doc, idx, arr) => (
-              <React.Fragment key={doc}>
+            {['Aadhaar Card', 'PAN Card', 'Offer Letter', 'Salary Slips'].map((docName, idx, arr) => (
+              <React.Fragment key={docName}>
                 <TouchableOpacity style={styles.documentRow} activeOpacity={0.7}>
                   <Ionicons name="document-attach-outline" size={20} color="#2563EB" />
-                  <Text style={styles.documentText}>{doc}</Text>
+                  <Text style={styles.documentText}>{docName}</Text>
                   <Ionicons name="download-outline" size={20} color="#2563EB" style={{ marginLeft: 'auto' }} />
                 </TouchableOpacity>
                 {idx < arr.length - 1 && <View style={styles.divider} />}
@@ -295,6 +341,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
   },
+  avatarWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
   avatarCircle: {
     width: 80,
     height: 80,
@@ -302,12 +352,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
   avatarInitials: {
     color: '#FFFFFF',
     fontSize: 28,
     fontWeight: 'bold',
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#1D4ED8',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerName: {
     color: '#FFFFFF',

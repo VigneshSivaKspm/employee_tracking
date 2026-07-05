@@ -118,6 +118,8 @@ export type RootStackParamList = {
 
   // App screens
   Main: undefined;
+  Attendance: undefined;
+  Leave: undefined;
   ApplyLeave: undefined;
   LeaveHistory: undefined;
   AttendanceHistory: undefined;
@@ -140,8 +142,8 @@ export type RootStackParamList = {
 
 export type BottomTabParamList = {
   Dashboard: undefined;
-  Attendance: undefined;
-  Leave: undefined;
+  ServiceRequests: undefined;
+  Targets: undefined;
   Analytics: undefined;
   Profile: undefined;
 };
