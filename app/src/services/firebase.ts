@@ -1,7 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -12,25 +11,31 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-console.log('[Firebase] Config check — projectId:', firebaseConfig.projectId ?? 'MISSING');
-console.log('[Firebase] Config check — apiKey set:', !!firebaseConfig.apiKey);
+console.log('[Firebase] Init — projectId:', firebaseConfig.projectId ?? 'MISSING');
+console.log('[Firebase] Init — apiKey set:', !!firebaseConfig.apiKey);
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-console.log('[Firebase] App initialized, name:', app.name);
+console.log('[Firebase] App name:', app.name);
 
-// Use AsyncStorage persistence so auth sessions survive app restarts
+// Try AsyncStorage persistence; fall back to in-memory (still works within a session)
 let auth;
 try {
+  // Dynamic require so a missing native module doesn't crash the import
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage),
   });
-  console.log('[Firebase] Auth initialized with AsyncStorage persistence');
+  console.log('[Firebase] Auth: AsyncStorage persistence enabled');
 } catch (e: any) {
-  console.log('[Firebase] initializeAuth threw (already initialized?):', e?.code ?? e?.message);
-  auth = getAuth(app);
-  console.log('[Firebase] Auth obtained via getAuth fallback');
+  console.warn('[Firebase] Auth persistence fallback (in-memory):', e?.code ?? e?.message);
+  try {
+    auth = getAuth(app);
+  } catch {
+    auth = getAuth(app);
+  }
 }
 
 export { auth };
 export const db = getFirestore(app);
-console.log('[Firebase] Firestore initialized');
+console.log('[Firebase] Ready — auth:', !!auth, 'db:', !!db);
