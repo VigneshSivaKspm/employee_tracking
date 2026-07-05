@@ -17,6 +17,8 @@ import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { AuthHeaderLogo } from '../../components/common/BrandLogo';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -26,6 +28,7 @@ interface Props {
 
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const bottomPadding = useStackScreenBottomPadding(40);
   const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -72,7 +75,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -85,9 +88,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
           >
             <View style={styles.headerDecor1} />
             <View style={styles.headerDecor2} />
-            <View style={styles.logoWrap}>
-              <Ionicons name="briefcase" size={30} color="#FFFFFF" />
-            </View>
+            <AuthHeaderLogo size={64} />
             <Text style={styles.headerTitle}>Welcome Back!</Text>
             <Text style={styles.headerSubtitle}>Sign in to your account</Text>
           </LinearGradient>

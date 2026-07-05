@@ -24,7 +24,7 @@ interface Company {
   industry: string;
   gst: string;
   website: string;
-  status: "Active" | "Inactive";
+  status: "Active" | "Inactive" | string;
 }
 
 const EMPTY_BRANCH: Omit<Branch, "id"> = {
@@ -259,7 +259,21 @@ export default function BranchesPage() {
                 </>
               ) : (
                 <>
-                  {[["name","Branch Name"],["code","Branch Code"],["company","Company"],["city","City"],["state","State"],["address","Address"],["phone","Phone"],["manager","Manager Name"]].map(([k,l]) => (
+                  {/* Company dropdown — must pick an existing company */}
+                  <div className="col-span-2">
+                    <label className="text-xs font-medium text-slate-600 mb-1 block">Company <span className="text-red-500">*</span></label>
+                    <select value={form.company || ""} onChange={e => setForm((p: any) => ({...p, company: e.target.value}))}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                      <option value="">— Select a company —</option>
+                      {companies.filter(c => c.status === "Active").map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                    {companies.filter(c => c.status === "Active").length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">No active companies found. Create a company first.</p>
+                    )}
+                  </div>
+                  {[["name","Branch Name"],["code","Branch Code"],["city","City"],["state","State"],["address","Address"],["phone","Phone"],["manager","Manager Name"]].map(([k,l]) => (
                     <div key={k} className={["name","address"].includes(k) ? "col-span-2" : ""}>
                       <label className="text-xs font-medium text-slate-600 mb-1 block">{l}</label>
                       <input value={form[k] || ""} onChange={e => setForm((p: any) => ({...p, [k]: e.target.value}))}

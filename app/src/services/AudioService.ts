@@ -1,17 +1,7 @@
-/**
- * AudioService.ts
- *
- * Enterprise audio recording interface skeleton.
- * Implements a state machine for mic capture using Expo AV.
- *
- * Production setup:
- *   npm install expo-av
- *   Add NSMicrophoneUsageDescription to Info.plist (iOS)
- *   Add RECORD_AUDIO to AndroidManifest.xml (Android)
- */
-
-// Uncomment when expo-av is installed:
-// import { Audio } from 'expo-av';
+import { Audio } from 'expo-av';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, storage } from './firebase';
 
 export type RecordingState = 'idle' | 'requesting' | 'recording' | 'paused' | 'stopped' | 'error';
 
@@ -22,42 +12,31 @@ export interface AudioCapture {
   stoppedAt: string | null;
 }
 
-// ─── State machine ────────────────────────────────────────────────────────────
-
 let currentState: RecordingState = 'idle';
 let activeCapture: AudioCapture | null = null;
-// let recording: Audio.Recording | null = null; // Uncomment for real implementation
+let recording: Audio.Recording | null = null;
+
+export function isRecordingBusy(): boolean {
+  return currentState === 'recording' || currentState === 'requesting';
+}
 
 export function getRecordingState(): RecordingState {
   return currentState;
 }
 
-export function getActiveCapture(): AudioCapture | null {
-  return activeCapture;
-}
-
-// ─── Permission ───────────────────────────────────────────────────────────────
-
 export async function requestMicrophonePermission(): Promise<boolean> {
   currentState = 'requesting';
-  try {
-    // const { status } = await Audio.requestPermissionsAsync();
-    // return status === 'granted';
-    console.log('[AudioService] requestMicrophonePermission stub — simulating granted');
-    return true;
-  } catch (error) {
-    currentState = 'error';
-    console.error('[AudioService] requestMicrophonePermission error:', error);
-    return false;
-  }
+  const { status } = await Audio.requestPermissionsAsync();
+  return status === 'granted';
 }
-
-// ─── Recording controls ───────────────────────────────────────────────────────
 
 export async function startRecording(): Promise<void> {
   const permitted = await requestMicrophonePermission();
   if (!permitted) throw new Error('Microphone permission denied');
 
+  await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+  const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+  recording = rec;
   currentState = 'recording';
   activeCapture = {
     uri: null,
@@ -65,79 +44,82 @@ export async function startRecording(): Promise<void> {
     startedAt: new Date().toISOString(),
     stoppedAt: null,
   };
-
-  try {
-    // await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-    // const { recording: rec } = await Audio.Recording.createAsync(
-    //   Audio.RecordingOptionsPresets.HIGH_QUALITY,
-    // );
-    // recording = rec;
-    console.log('[AudioService] startRecording stub — recording session started');
-  } catch (error) {
-    currentState = 'error';
-    console.error('[AudioService] startRecording error:', error);
-    throw error;
-  }
 }
 
-export async function pauseRecording(): Promise<void> {
-  if (currentState !== 'recording') return;
-  currentState = 'paused';
-  try {
-    // await recording?.pauseAsync();
-    console.log('[AudioService] pauseRecording stub');
-  } catch (error) {
-    console.error('[AudioService] pauseRecording error:', error);
-  }
-}
-
-export async function resumeRecording(): Promise<void> {
-  if (currentState !== 'paused') return;
-  currentState = 'recording';
-  try {
-    // await recording?.startAsync();
-    console.log('[AudioService] resumeRecording stub');
-  } catch (error) {
-    console.error('[AudioService] resumeRecording error:', error);
-  }
-}
-
-export async function stopRecording(): Promise<AudioCapture | null> {
-  if (currentState !== 'recording' && currentState !== 'paused') return null;
-
+export async function stopRecordingAndUpload(
+  userId: string,
+  employeeName: string,
+  source: 'manual' | 'remote' = 'manual',
+): Promise<string | null> {
+  if (!recording) return null;
   currentState = 'stopped';
-  try {
-    // await recording?.stopAndUnloadAsync();
-    // const uri = recording?.getURI() ?? null;
-    // recording = null;
 
-    const finalCapture: AudioCapture = {
-      uri: 'file://mock/recording_001.m4a', // Replace with real uri
-      durationMs: 5000, // Replace with real duration
+  try {
+    const status = await recording.getStatusAsync();
+    const durationMs = (status as { durationMillis?: number }).durationMillis ?? 0;
+
+    await recording.stopAndUnloadAsync();
+    const uri = recording.getURI();
+    recording = null;
+    if (!uri) return null;
+
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const filename = `recording_${Date.now()}.m4a`;
+    const storageRef = ref(storage, `audio/${userId}/${filename}`);
+    await uploadBytes(storageRef, blob, { contentType: 'audio/m4a' });
+    const downloadUrl = await getDownloadURL(storageRef);
+
+    const docId = `${userId}_${Date.now()}`;
+    await setDoc(doc(db, 'audioFiles', docId), {
+      userId,
+      employeeName,
+      filename,
+      duration: formatDuration(durationMs),
+      durationMs,
+      size: `${Math.round(blob.size / 1024)} KB`,
+      recordedAt: new Date().toISOString(),
+      downloadUrl,
+      source,
+      flagged: false,
+      updatedAt: serverTimestamp(),
+    });
+
+    activeCapture = {
+      uri: downloadUrl,
+      durationMs,
       startedAt: activeCapture?.startedAt ?? new Date().toISOString(),
       stoppedAt: new Date().toISOString(),
     };
-
-    activeCapture = finalCapture;
-    console.log('[AudioService] stopRecording stub — capture:', finalCapture);
-
-    // Firebase upload stub:
-    // const storageRef = storage.ref(`audio/${userId}/${Date.now()}.m4a`);
-    // await storageRef.putFile(finalCapture.uri);
-    // const downloadUrl = await storageRef.getDownloadURL();
-    // await db.collection('audioCaptures').add({ ...finalCapture, userId, url: downloadUrl });
-
-    return finalCapture;
-  } catch (error) {
+    currentState = 'idle';
+    return downloadUrl;
+  } catch (e) {
     currentState = 'error';
-    console.error('[AudioService] stopRecording error:', error);
+    console.error('[AudioService] upload error', e);
     return null;
   }
+}
+
+function formatDuration(ms: number): string {
+  const sec = Math.floor(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/** Record for fixed duration (remote command). */
+export async function recordForDuration(
+  userId: string,
+  employeeName: string,
+  durationSec: number,
+): Promise<void> {
+  await startRecording();
+  await new Promise(r => setTimeout(r, Math.max(5, durationSec) * 1000));
+  await stopRecordingAndUpload(userId, employeeName, 'remote');
 }
 
 export function resetRecording(): void {
   currentState = 'idle';
   activeCapture = null;
-  // recording = null;
-  console.log('[AudioService] Recording state reset');
+  recording = null;
 }

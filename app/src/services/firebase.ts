@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -38,4 +39,5 @@ try {
 
 export { auth };
 export const db = getFirestore(app);
-console.log('[Firebase] Ready — auth:', !!auth, 'db:', !!db);
+export const storage = getStorage(app);
+console.log('[Firebase] Ready — auth:', !!auth, 'db:', !!db, 'storage:', !!storage);

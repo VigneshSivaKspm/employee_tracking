@@ -16,6 +16,7 @@ import { useAttendance } from '../../context/AttendanceContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import { Colors, Spacing, BorderRadius, Typography, Shadow } from '../../theme/colors';
 import type { LeaveRequest, LeaveStatus, RootStackParamList } from '../../types';
+import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -88,6 +89,7 @@ function UpcomingLeaveCard({ leave }: { leave: LeaveRequest }) {
 
 export default function LeaveManagementScreen() {
   const insets = useSafeAreaInsets();
+  const bottomPadding = useTabScreenBottomPadding();
   const navigation = useNavigation<Nav>();
   const { leaveRequests, leaveBalance } = useAttendance();
 
@@ -100,7 +102,7 @@ export default function LeaveManagementScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        contentContainerStyle={{ paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Blue Gradient Header ── */}

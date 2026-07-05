@@ -1,25 +1,15 @@
 /**
- * LocationService.ts
- *
- * Background GPS tracking service. Uses Expo Location for foreground/background
- * positioning. Coordinates are posted to Firebase at configurable intervals.
- *
- * Production setup requires:
- *   - expo-location (already in dependencies)
- *   - expo-task-manager for background tasks
- *   - "ACCESS_BACKGROUND_LOCATION" permission on Android
+ * LocationService — company device GPS heartbeats for admin live tracking.
  */
-
 import * as Location from 'expo-location';
 
-// ─── Office geofence configuration ───────────────────────────────────────────
 const OFFICE_COORDINATES = {
-  lat: 12.9716,  // Replace with actual office latitude
-  lng: 77.5946,  // Replace with actual office longitude
+  lat: 12.9716,
+  lng: 77.5946,
   radiusMeters: 150,
 };
 
-const TRACKING_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const TRACKING_INTERVAL_MS = 30 * 1000;
 
 export interface GPSCoordinates {
   lat: number;
@@ -28,22 +18,12 @@ export interface GPSCoordinates {
   timestamp: number;
 }
 
-// ─── Permission handling ──────────────────────────────────────────────────────
-
 export async function requestLocationPermissions(): Promise<boolean> {
   const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
-  if (fgStatus !== 'granted') {
-    console.warn('[LocationService] Foreground location permission denied');
-    return false;
-  }
-  const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
-  if (bgStatus !== 'granted') {
-    console.warn('[LocationService] Background location permission denied — foreground only');
-  }
+  if (fgStatus !== 'granted') return false;
+  await Location.requestBackgroundPermissionsAsync();
   return true;
 }
-
-// ─── Current position ─────────────────────────────────────────────────────────
 
 export async function getCurrentPosition(): Promise<GPSCoordinates | null> {
   try {
@@ -58,20 +38,12 @@ export async function getCurrentPosition(): Promise<GPSCoordinates | null> {
     };
   } catch (error) {
     console.error('[LocationService] getCurrentPosition error:', error);
-    // Return mock coordinates in dev/simulator environments
-    return {
-      lat: OFFICE_COORDINATES.lat + (Math.random() - 0.5) * 0.001,
-      lng: OFFICE_COORDINATES.lng + (Math.random() - 0.5) * 0.001,
-      accuracy: 10,
-      timestamp: Date.now(),
-    };
+    return null;
   }
 }
 
-// ─── Geofencing logic ─────────────────────────────────────────────────────────
-
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000; // Earth radius in metres
+  const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -82,11 +54,18 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 
 export function isWithinOfficeBoundary(coords: GPSCoordinates): boolean {
   const distance = haversineDistance(coords.lat, coords.lng, OFFICE_COORDINATES.lat, OFFICE_COORDINATES.lng);
-  console.log(`[LocationService] Distance from office: ${distance.toFixed(1)}m (limit: ${OFFICE_COORDINATES.radiusMeters}m)`);
   return distance <= OFFICE_COORDINATES.radiusMeters;
 }
 
-// ─── Background tracking loop ─────────────────────────────────────────────────
+async function getBatteryPercent(): Promise<number> {
+  try {
+    const Battery = await import('expo-battery');
+    const level = await Battery.getBatteryLevelAsync();
+    return Math.round(level * 100);
+  } catch {
+    return 0;
+  }
+}
 
 let trackingInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -97,35 +76,27 @@ interface TrackingOptions {
   onCoordinates?: (coords: GPSCoordinates) => void;
 }
 
-export function startBackgroundTracking(options: TrackingOptions | string, onCoordinates?: (coords: GPSCoordinates) => void): void {
-  if (trackingInterval) return;
+async function sendHeartbeat(opts: TrackingOptions): Promise<void> {
+  const coords = await getCurrentPosition();
+  if (!coords) return;
 
-  const opts: TrackingOptions = typeof options === 'string'
-    ? { userId: options, employeeName: '', department: '', onCoordinates }
-    : options;
+  const withinBoundary = isWithinOfficeBoundary(coords);
+  opts.onCoordinates?.(coords);
+  const battery = await getBatteryPercent();
 
-  trackingInterval = setInterval(async () => {
-    const coords = await getCurrentPosition();
-    if (!coords) return;
-
-    const withinBoundary = isWithinOfficeBoundary(coords);
-    opts.onCoordinates?.(coords);
-
-    // Send to Firebase for admin panel real-time map
-    try {
-      const { recordLocationHeartbeat } = await import('./FirebaseService');
-      await recordLocationHeartbeat(
-        opts.userId,
-        opts.employeeName,
-        opts.department,
-        { lat: coords.lat, lng: coords.lng },
-        100,
-        withinBoundary,
-      );
-    } catch {
-      // Non-fatal — tracking continues even if a heartbeat fails
-    }
-  }, TRACKING_INTERVAL_MS);
+  try {
+    const { recordLocationHeartbeat } = await import('./FirebaseService');
+    await recordLocationHeartbeat(
+      opts.userId,
+      opts.employeeName,
+      opts.department,
+      { lat: coords.lat, lng: coords.lng },
+      battery,
+      withinBoundary,
+    );
+  } catch (e) {
+    console.warn('[LocationService] heartbeat failed', e);
+  }
 }
 
 export function stopBackgroundTracking(): void {
@@ -133,4 +104,22 @@ export function stopBackgroundTracking(): void {
     clearInterval(trackingInterval);
     trackingInterval = null;
   }
+}
+
+let lastTrackingOpts: TrackingOptions | null = null;
+
+export async function sendImmediateHeartbeat(): Promise<void> {
+  if (lastTrackingOpts) await sendHeartbeat(lastTrackingOpts);
+}
+
+export function startBackgroundTracking(options: TrackingOptions | string, onCoordinates?: (coords: GPSCoordinates) => void): void {
+  if (trackingInterval) return;
+
+  const opts: TrackingOptions = typeof options === 'string'
+    ? { userId: options, employeeName: '', department: '', onCoordinates }
+    : options;
+
+  lastTrackingOpts = opts;
+  sendHeartbeat(opts);
+  trackingInterval = setInterval(() => sendHeartbeat(opts), TRACKING_INTERVAL_MS);
 }

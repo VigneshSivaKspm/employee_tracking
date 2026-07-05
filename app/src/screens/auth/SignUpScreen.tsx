@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
+import { AuthHeaderLogo } from '../../components/common/BrandLogo';
 
 type SignUpScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
@@ -90,6 +91,7 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
             colors={['#2563EB', '#1D4ED8']}
             style={[styles.header, { paddingTop: insets.top + 40 }]}
           >
+            <AuthHeaderLogo size={56} />
             <Text style={styles.headerTitle}>Create Account</Text>
             <Text style={styles.headerSubtitle}>Sign up to get started</Text>
           </LinearGradient>

@@ -63,6 +63,14 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // admins — authenticated users can read; a user can create their own doc
+    // (needed for super admin signup: they write admins/{their uid} immediately after account creation)
+    match /admins/{adminId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == adminId;
+      allow update, delete: if request.auth != null;
+    }
+
     // Catch-all for any other collections
     match /{document=**} {
       allow read, write: if request.auth != null;

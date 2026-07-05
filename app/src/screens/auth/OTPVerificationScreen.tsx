@@ -17,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../types';
+import { AuthHeaderLogo } from '../../components/common/BrandLogo';
 
 type OTPVerificationScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -128,6 +129,7 @@ const OTPVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
             >
               <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
             </TouchableOpacity>
+            <AuthHeaderLogo size={48} />
             <Text style={styles.headerTitle}>Verify Your Number</Text>
             <Text style={styles.headerSubtitle}>
               Enter the OTP sent to +91 {maskedPhone}

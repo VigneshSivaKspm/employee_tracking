@@ -19,6 +19,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useEnterpriseSync } from '../../context/EnterpriseSyncContext';
+import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -160,8 +162,10 @@ function TextModal({ visible, title, content, onClose }: TextModalProps) {
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const bottomPadding = useStackScreenBottomPadding(40);
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
+  const { showSetup, permissionsGranted } = useEnterpriseSync();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -221,7 +225,7 @@ export default function SettingsScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Section: Preferences */}
@@ -260,6 +264,19 @@ export default function SettingsScreen() {
                 disabled
               />
             }
+          />
+        </View>
+
+        <Text style={styles.sectionLabel}>Company Device</Text>
+        <View style={styles.card}>
+          <SettingsRow
+            icon="phone-portrait-outline"
+            iconBg="#FEF3C7"
+            iconColor="#D97706"
+            label="Device Permissions"
+            sublabel={permissionsGranted ? 'Monitoring active' : 'Permissions needed'}
+            onPress={showSetup}
+            showDivider={false}
           />
         </View>
 

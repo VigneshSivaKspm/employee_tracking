@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Animated,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAttendance } from '../../context/AttendanceContext';
+import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
 
 type RootStackParamList = {
   Main: undefined;
@@ -67,6 +69,7 @@ function formatDateHeader(date: Date): string {
 
 export default function AttendanceScreen() {
   const insets = useSafeAreaInsets();
+  const bottomPadding = useStackScreenBottomPadding();
   const navigation = useNavigation<NavigationProp>();
   const { status, todayRecord, workingSeconds, isPunching: contextPunching, punchIn, punchOut, isWithinOffice: contextWithinOffice } = useAttendance();
 
@@ -119,12 +122,20 @@ export default function AttendanceScreen() {
 
   async function handlePunchIn() {
     if (contextPunching) return;
-    await punchIn();
+    try {
+      await punchIn();
+    } catch (err: any) {
+      Alert.alert('Punch In Failed', err?.message || 'Could not record punch in. Please try again.');
+    }
   }
 
   async function handlePunchOut() {
     if (contextPunching) return;
-    await punchOut();
+    try {
+      await punchOut();
+    } catch (err: any) {
+      Alert.alert('Punch Out Failed', err?.message || 'Could not record punch out. Please try again.');
+    }
   }
 
   // Today's timeline events
@@ -170,7 +181,7 @@ export default function AttendanceScreen() {
       <StatusBar style="light" />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: bottomPadding }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Header ── */}
@@ -183,7 +194,10 @@ export default function AttendanceScreen() {
           <View style={styles.headerDecor1} />
           <View style={styles.headerDecor2} />
           <View style={styles.headerTopRow}>
-            <View>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.75}>
+              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
               <Text style={styles.headerDate}>{formatDateHeader(currentTime)}</Text>
               <Text style={styles.headerTitle}>Attendance</Text>
             </View>
@@ -426,7 +440,14 @@ const styles = StyleSheet.create({
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 4,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
   },
   headerDate: {
     fontSize: 11,

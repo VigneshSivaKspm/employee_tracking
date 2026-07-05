@@ -42,7 +42,8 @@ function formatDate(dateStr: string): string {
 
 function LeaveCard({ leave }: { leave: LeaveRequest }) {
   const icon = LEAVE_ICONS[leave.type] ?? LEAVE_ICONS.casual;
-  const status = STATUS_CONFIG[leave.status];
+  const statusKey = (leave.status || 'pending').toLowerCase() as LeaveStatus;
+  const status = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG.pending;
   const typeName = leave.type.charAt(0).toUpperCase() + leave.type.slice(1) + ' Leave';
 
   return (

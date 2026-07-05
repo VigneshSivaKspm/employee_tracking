@@ -10,10 +10,12 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
+import BrandLogo from '../../components/common/BrandLogo';
 
 type OnboardingScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
@@ -54,6 +56,7 @@ const slides: Slide[] = [
 const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const bottomPadding = useStackScreenBottomPadding(32);
 
   const handleSkip = () => {
     navigation.replace('Login');
@@ -80,8 +83,9 @@ const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
 
-      {/* Skip Button */}
+      {/* Skip Button + Brand */}
       <View style={styles.header}>
+        <BrandLogo size="xs" showName theme="light" />
         <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
@@ -108,7 +112,7 @@ const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
       </ScrollView>
 
       {/* Bottom Controls */}
-      <View style={styles.bottomSection}>
+      <View style={[styles.bottomSection, { paddingBottom: bottomPadding }]}>
         {/* Dot Indicators */}
         <View style={styles.dotsContainer}>
           {slides.map((_, index) => (
@@ -143,7 +147,8 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 4,
@@ -192,7 +197,6 @@ const styles = StyleSheet.create({
   },
   bottomSection: {
     paddingHorizontal: 24,
-    paddingBottom: 32,
     alignItems: 'center',
     gap: 24,
   },

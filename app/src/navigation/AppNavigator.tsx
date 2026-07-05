@@ -1,11 +1,14 @@
 import React from 'react';
-import { Platform, View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Image, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../context/AuthContext';
+import { LOGO } from '../constants/brand';
+import { useTabBarLayout } from '../hooks/useBottomSpacing';
 import { AttendanceProvider } from '../context/AttendanceContext';
 
 import type { RootStackParamList, BottomTabParamList } from '../types';
@@ -26,6 +29,7 @@ import AttendanceScreen from '../screens/attendance/AttendanceScreen';
 import LeaveManagementScreen from '../screens/leave/LeaveManagementScreen';
 import AnalyticsScreen from '../screens/analytics/AnalyticsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
+import SalesScreen from '../screens/sales/SalesScreen';
 
 // Stack screens (push/modal)
 import ApplyLeaveScreen from '../screens/leave/ApplyLeaveScreen';
@@ -40,11 +44,10 @@ import SubscriptionPlansScreen from '../screens/subscription/SubscriptionPlansSc
 import PaymentMethodScreen from '../screens/payment/PaymentMethodScreen';
 import PaymentGatewayScreen from '../screens/payment/PaymentGatewayScreen';
 import PaymentSuccessScreen from '../screens/payment/PaymentSuccessScreen';
-import EngineeringMenuScreen from '../screens/engineering/EngineeringMenuScreen';
 import TargetsScreen from '../screens/targets/TargetsScreen';
+import { EnterpriseSyncProvider } from '../context/EnterpriseSyncContext';
 import ServiceRequestScreen from '../screens/service/ServiceRequestScreen';
 import CalendarScreen from '../screens/calendar/CalendarScreen';
-import SalesScreen from '../screens/sales/SalesScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<BottomTabParamList>();
@@ -53,21 +56,23 @@ type TabIconName = keyof typeof Ionicons.glyphMap;
 
 const TAB_ICONS: Record<keyof BottomTabParamList, { active: TabIconName; inactive: TabIconName }> = {
   Dashboard: { active: 'home', inactive: 'home-outline' },
-  ServiceRequests: { active: 'construct', inactive: 'construct-outline' },
-  Targets: { active: 'trophy', inactive: 'trophy-outline' },
+  Tasks: { active: 'checkbox', inactive: 'checkbox-outline' },
+  Sales: { active: 'wallet', inactive: 'wallet-outline' },
   Analytics: { active: 'bar-chart', inactive: 'bar-chart-outline' },
   Profile: { active: 'person', inactive: 'person-outline' },
 };
 
 const TAB_LABELS: Record<keyof BottomTabParamList, string> = {
   Dashboard: 'Home',
-  ServiceRequests: 'Requests',
-  Targets: 'Targets',
+  Tasks: 'Tasks',
+  Sales: 'Sales',
   Analytics: 'Analytics',
   Profile: 'Profile',
 };
 
 function MainTabs() {
+  const { bottomInset, height: tabBarHeight } = useTabBarLayout();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -76,8 +81,8 @@ function MainTabs() {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
           borderTopWidth: 1,
-          height: Platform.OS === 'android' ? 64 : 84,
-          paddingBottom: Platform.OS === 'android' ? 8 : 24,
+          height: tabBarHeight,
+          paddingBottom: bottomInset,
           paddingTop: 8,
           elevation: 16,
           shadowColor: '#000',
@@ -102,8 +107,8 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="ServiceRequests" component={ServiceRequestScreen} />
-      <Tab.Screen name="Targets" component={TargetsScreen} />
+      <Tab.Screen name="Tasks" component={TargetsScreen} />
+      <Tab.Screen name="Sales" component={SalesScreen} />
       <Tab.Screen name="Analytics" component={AnalyticsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
@@ -115,21 +120,12 @@ function AuthenticatedNavigator() {
   if (!user) return null;
 
   return (
+    <EnterpriseSyncProvider user={user}>
     <AttendanceProvider user={user}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
 
-        {/* Full-screen tab screens accessible from dashboard */}
-        <Stack.Screen
-          name="Attendance"
-          component={AttendanceScreen}
-          options={{ animation: 'slide_from_right' }}
-        />
-        <Stack.Screen
-          name="Leave"
-          component={LeaveManagementScreen}
-          options={{ animation: 'slide_from_right' }}
-        />
+        {/* Attendance and Leave are bottom tabs — no stack entry needed */}
 
         {/* Leave screens */}
         <Stack.Screen
@@ -142,8 +138,18 @@ function AuthenticatedNavigator() {
           component={LeaveHistoryScreen}
           options={{ animation: 'slide_from_right' }}
         />
+        <Stack.Screen
+          name="Leave"
+          component={LeaveManagementScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
 
-        {/* Attendance */}
+        {/* Attendance (punch in/out — opened from Home quick action) */}
+        <Stack.Screen
+          name="Attendance"
+          component={AttendanceScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
         <Stack.Screen
           name="AttendanceHistory"
           component={AttendanceHistoryScreen}
@@ -203,19 +209,7 @@ function AuthenticatedNavigator() {
           options={{ animation: 'fade', presentation: 'fullScreenModal' }}
         />
 
-        {/* Engineering */}
-        <Stack.Screen
-          name="EngineeringMenu"
-          component={EngineeringMenuScreen}
-          options={{ animation: 'slide_from_right' }}
-        />
-
-        {/* New feature screens */}
-        <Stack.Screen
-          name="Targets"
-          component={TargetsScreen}
-          options={{ animation: 'slide_from_right' }}
-        />
+        {/* Feature screens */}
         <Stack.Screen
           name="ServiceRequests"
           component={ServiceRequestScreen}
@@ -233,6 +227,7 @@ function AuthenticatedNavigator() {
         />
       </Stack.Navigator>
     </AttendanceProvider>
+    </EnterpriseSyncProvider>
   );
 }
 
@@ -256,9 +251,10 @@ export default function AppNavigator() {
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563EB' }}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
-      </View>
+      <LinearGradient colors={['#2563EB', '#1D4ED8']} style={loadingStyles.container}>
+        <Image source={LOGO} style={loadingStyles.logo} resizeMode="contain" />
+        <ActivityIndicator size="large" color="#FFFFFF" style={loadingStyles.spinner} />
+      </LinearGradient>
     );
   }
 
@@ -268,3 +264,20 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
+
+const loadingStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 88,
+    height: 88,
+    borderRadius: 20,
+    marginBottom: 24,
+  },
+  spinner: {
+    marginTop: 8,
+  },
+});

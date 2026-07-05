@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,15 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
+import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
 
 type RootStackParamList = {
   EditProfile: undefined;
@@ -20,13 +22,7 @@ type RootStackParamList = {
   Notifications: undefined;
   AnnouncementDetail: { announcementId: string };
   Settings: undefined;
-  SubscriptionPlans: undefined;
-  EngineeringMenu: undefined;
   Login: undefined;
-  Targets: undefined;
-  ServiceRequests: undefined;
-  Calendar: undefined;
-  Sales: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -94,8 +90,15 @@ function SettingsRow({ iconName, iconBg, label, onPress, badge, isLast }: Settin
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshProfile } = useAuth();
   const insets = useSafeAreaInsets();
+  const bottomPadding = useTabScreenBottomPadding();
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+    }, [refreshProfile]),
+  );
 
   const getInitials = (name: string): string => {
     if (!name || !name.trim()) return '?';
@@ -108,10 +111,7 @@ export default function ProfileScreen() {
   };
 
   const handleAvatarPress = () => {
-    Alert.alert(
-      'Upload Photo',
-      'Photo upload requires Firebase Storage setup in the admin console. Feature coming in next update.',
-    );
+    navigation.navigate('EditProfile');
   };
 
   const handleLogout = () => {
@@ -133,16 +133,27 @@ export default function ProfileScreen() {
   const designation = user?.designation ?? '';
   const department = user?.department ?? '';
   const phone = user?.phone ?? '';
-  const emergencyContact = user?.emergencyContact ?? '';
-  const emergencyPhone = user?.emergencyPhone ?? '';
   const joinDate = formatJoinDate(user?.joinDate ?? '');
-  const bankAccount = user?.bankAccount ?? '';
-  const bankName = user?.bankName ?? '';
-  const ifscCode = user?.ifscCode ?? '';
+  const branchName = user?.branchName ?? '';
+  const companyName = user?.companyName ?? '';
+  const status = user?.status ?? '';
+
+  const employeeFields: InfoRowProps[] = [
+    { iconName: 'person-outline', iconBg: '#2563EB', label: 'Full Name', value: name },
+    { iconName: 'id-card-outline', iconBg: '#7C3AED', label: 'Employee ID', value: employeeId },
+    { iconName: 'mail-outline', iconBg: '#16A34A', label: 'Email', value: email },
+    { iconName: 'call-outline', iconBg: '#D97706', label: 'Mobile', value: phone },
+    { iconName: 'briefcase-outline', iconBg: '#2563EB', label: 'Designation', value: designation },
+    { iconName: 'business-outline', iconBg: '#0891B2', label: 'Department', value: department },
+    { iconName: 'location-outline', iconBg: '#7C3AED', label: 'Branch', value: branchName },
+    { iconName: 'earth-outline', iconBg: '#16A34A', label: 'Company', value: companyName },
+    { iconName: 'calendar-outline', iconBg: '#D97706', label: 'Join Date', value: joinDate },
+    { iconName: 'checkmark-circle-outline', iconBg: '#059669', label: 'Status', value: status },
+  ];
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPadding }}>
         {/* Header Gradient */}
         <LinearGradient
           colors={['#1E3A8A', '#2563EB']}
@@ -157,9 +168,13 @@ export default function ProfileScreen() {
           <View style={styles.headerContent}>
             <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.85}>
               <View style={styles.avatarWrapper}>
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
-                </View>
+                {user?.avatarUrl ? (
+                  <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <View style={styles.avatarCircle}>
+                    <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
+                  </View>
+                )}
                 <View style={styles.cameraOverlay}>
                   <Ionicons name="camera" size={13} color="#FFFFFF" />
                 </View>
@@ -184,108 +199,16 @@ export default function ProfileScreen() {
           </View>
         </LinearGradient>
 
-        {/* Info Cards */}
+        {/* Employee Details */}
         <View style={styles.cardsContainer}>
-
-          {/* Personal Details */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Personal Details</Text>
-            <InfoRow iconName="person-outline" iconBg="#2563EB" label="Full Name" value={name} />
-            <View style={styles.divider} />
-            <InfoRow iconName="id-card-outline" iconBg="#7C3AED" label="Employee ID" value={employeeId} />
-            <View style={styles.divider} />
-            <InfoRow iconName="mail-outline" iconBg="#16A34A" label="Email" value={email} />
-            <View style={styles.divider} />
-            <InfoRow iconName="call-outline" iconBg="#D97706" label="Mobile" value={phone} />
-          </View>
-
-          {/* Contact Information */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Contact Information</Text>
-            <InfoRow iconName="location-outline" iconBg="#2563EB" label="Department" value={department} />
-            <View style={styles.divider} />
-            <InfoRow iconName="business-outline" iconBg="#16A34A" label="Join Date" value={joinDate} />
-          </View>
-
-          {/* Emergency Contact */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Emergency Contact</Text>
-            <InfoRow
-              iconName="person-circle-outline"
-              iconBg="#DC2626"
-              label={emergencyContact || 'Emergency Contact'}
-              value={emergencyPhone || 'Not set'}
-            />
-          </View>
-
-          {/* Bank Details */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Bank Details</Text>
-            <InfoRow
-              iconName="card-outline"
-              iconBg="#2563EB"
-              label="Bank Account"
-              value={bankAccount || 'Not configured'}
-            />
-            <View style={styles.divider} />
-            <InfoRow
-              iconName="business-outline"
-              iconBg="#16A34A"
-              label="Bank Name"
-              value={bankName || 'Not configured'}
-            />
-            <View style={styles.divider} />
-            <InfoRow
-              iconName="document-text-outline"
-              iconBg="#7C3AED"
-              label="IFSC Code"
-              value={ifscCode || 'Not configured'}
-            />
-          </View>
-
-          {/* Documents */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Documents</Text>
-            {['Aadhaar Card', 'PAN Card', 'Offer Letter', 'Salary Slips'].map((docName, idx, arr) => (
-              <React.Fragment key={docName}>
-                <TouchableOpacity style={styles.documentRow} activeOpacity={0.7}>
-                  <Ionicons name="document-attach-outline" size={20} color="#2563EB" />
-                  <Text style={styles.documentText}>{docName}</Text>
-                  <Ionicons name="download-outline" size={20} color="#2563EB" style={{ marginLeft: 'auto' }} />
-                </TouchableOpacity>
-                {idx < arr.length - 1 && <View style={styles.divider} />}
+            <Text style={styles.cardTitle}>Employee Details</Text>
+            {employeeFields.map((field, idx) => (
+              <React.Fragment key={field.label}>
+                {idx > 0 && <View style={styles.divider} />}
+                <InfoRow {...field} />
               </React.Fragment>
             ))}
-          </View>
-
-          {/* Quick Links */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>My Work</Text>
-            <SettingsRow
-              iconName="trophy-outline"
-              iconBg="#2563EB"
-              label="My Targets"
-              onPress={() => (navigation as any).navigate('Targets')}
-            />
-            <SettingsRow
-              iconName="receipt-outline"
-              iconBg="#16A34A"
-              label="Sales & Expenses"
-              onPress={() => (navigation as any).navigate('Sales')}
-            />
-            <SettingsRow
-              iconName="construct-outline"
-              iconBg="#D97706"
-              label="Service Requests"
-              onPress={() => (navigation as any).navigate('ServiceRequests')}
-            />
-            <SettingsRow
-              iconName="calendar-outline"
-              iconBg="#7C3AED"
-              label="Calendar"
-              onPress={() => (navigation as any).navigate('Calendar')}
-              isLast
-            />
           </View>
 
           {/* Account / Settings */}
@@ -304,23 +227,10 @@ export default function ProfileScreen() {
               onPress={() => navigation.navigate('ChangePassword')}
             />
             <SettingsRow
-              iconName="star-outline"
-              iconBg="#D97706"
-              label="Subscription Plans"
-              badge="Premium"
-              onPress={() => navigation.navigate('SubscriptionPlans')}
-            />
-            <SettingsRow
               iconName="settings-outline"
               iconBg="#64748B"
               label="Settings"
               onPress={() => navigation.navigate('Settings')}
-            />
-            <SettingsRow
-              iconName="construct-outline"
-              iconBg="#94A3B8"
-              label="Engineering Menu"
-              onPress={() => navigation.navigate('EngineeringMenu')}
               isLast
             />
           </View>
@@ -385,6 +295,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
+  },
+  avatarImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   avatarInitials: {
     color: '#FFFFFF',
@@ -501,18 +419,6 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#F1F5F9',
     marginLeft: 50,
-  },
-  documentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 11,
-    gap: 10,
-  },
-  documentText: {
-    fontSize: 14,
-    color: '#0F172A',
-    fontWeight: '600',
-    flex: 1,
   },
   settingsRow: {
     flexDirection: 'row',

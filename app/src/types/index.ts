@@ -17,6 +17,10 @@ export interface User {
   emergencyContact: string;
   emergencyPhone: string;
   joinDate: string;
+  branchName?: string;
+  branchId?: string;
+  companyName?: string;
+  status?: string;
   bankAccount?: string;
   bankName?: string;
   ifscCode?: string;
@@ -41,6 +45,7 @@ export interface LeaveRequest {
   status: LeaveStatus;
   appliedOn: string;
   hasDocument: boolean;
+  documentName?: string;
   totalDays: number;
 }
 
@@ -62,6 +67,36 @@ export interface Notification {
   time: string;
   type: 'leave' | 'announcement' | 'salary' | 'attendance' | 'general';
   isRead: boolean;
+}
+
+export interface TargetComment {
+  id: string;
+  text: string;
+  authorName: string;
+  authorId: string;
+  role?: 'employee' | 'admin';
+  createdAt: string;
+}
+
+export type TargetType = 'task' | 'multiple';
+export type TargetStatus = 'Active' | 'Completed' | 'Overdue' | 'Draft';
+
+export interface EmployeeTarget {
+  id: string;
+  title: string;
+  description?: string;
+  type?: TargetType;
+  targetValue: number;
+  achievedValue: number;
+  unit?: string;
+  startDate: string;
+  endDate: string;
+  status: TargetStatus;
+  department?: string;
+  employeeId?: string;
+  employeeName?: string;
+  userId?: string;
+  comments?: TargetComment[];
 }
 
 export interface LeaveBalance {
@@ -132,9 +167,7 @@ export type RootStackParamList = {
   PaymentMethod: { planId: string; planName: string; price: number };
   PaymentGateway: { method: PaymentMethod; planName: string; price: number };
   PaymentSuccess: { planName: string; price: number; transactionId: string };
-  EngineeringMenu: undefined;
   LeaveDetail: { leaveId: string };
-  Targets: undefined;
   ServiceRequests: undefined;
   Calendar: undefined;
   Sales: undefined;
@@ -142,8 +175,8 @@ export type RootStackParamList = {
 
 export type BottomTabParamList = {
   Dashboard: undefined;
-  ServiceRequests: undefined;
-  Targets: undefined;
+  Tasks: undefined;
+  Sales: undefined;
   Analytics: undefined;
   Profile: undefined;
 };

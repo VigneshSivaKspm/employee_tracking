@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
+import { AuthHeaderLogo } from '../../components/common/BrandLogo';
 
 type ForgotPasswordScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -70,6 +71,7 @@ const ForgotPasswordScreen: React.FC<Props> = ({ navigation }) => {
             >
               <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
             </TouchableOpacity>
+            <AuthHeaderLogo size={48} />
             <Text style={styles.headerTitle}>Forgot Password?</Text>
             <Text style={styles.headerSubtitle}>
               Enter your registered email or mobile number

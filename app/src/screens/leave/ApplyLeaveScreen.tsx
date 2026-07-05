@@ -10,8 +10,10 @@ import {
   Platform,
   Modal,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAttendance } from '../../context/AttendanceContext';
@@ -348,7 +350,7 @@ export default function ApplyLeaveScreen() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [pickedImage, setPickedImage] = useState<{ uri: string; name: string } | null>(null);
   const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -360,9 +362,26 @@ export default function ApplyLeaveScreen() {
     if (endDate && val > endDate) setEndDate(val);
   }, [endDate]);
 
-  const handleChooseFile = useCallback(() => {
-    // In production, integrate expo-document-picker here.
-    setFileName('medical_certificate.pdf');
+  const handleChooseFile = useCallback(async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to attach an image.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const name = asset.fileName || asset.uri.split('/').pop() || 'attachment.jpg';
+        setPickedImage({ uri: asset.uri, name });
+      }
+    } catch {
+      Alert.alert('Error', 'Could not open image picker. Please try again.');
+    }
   }, []);
 
   const handleSubmit = useCallback(async () => {
@@ -385,12 +404,13 @@ export default function ApplyLeaveScreen() {
 
     setSubmitting(true);
     try {
-      submitLeave({
+      await submitLeave({
         type: leaveType,
         startDate,
         endDate,
         reason: reason.trim(),
-        hasDocument: !!fileName,
+        hasDocument: !!pickedImage,
+        documentName: pickedImage?.name,
         totalDays: Math.max(totalDays, 1),
       });
       Alert.alert('Success', 'Your leave request has been submitted successfully.', [
@@ -401,7 +421,7 @@ export default function ApplyLeaveScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [leaveType, startDate, endDate, reason, fileName, totalDays, submitLeave, navigation]);
+  }, [leaveType, startDate, endDate, reason, pickedImage, totalDays, submitLeave, navigation]);
 
   return (
     <View style={styles.root}>
@@ -499,9 +519,9 @@ export default function ApplyLeaveScreen() {
           <View style={styles.fieldGroup}>
             <View style={styles.uploadRow}>
               <View style={styles.uploadLabelCol}>
-                <Ionicons name="document-attach-outline" size={16} color={Colors.text.secondary} />
+                <Ionicons name="image-outline" size={16} color={Colors.text.secondary} />
                 <Text style={styles.uploadLabel}>
-                  Upload Document{' '}
+                  Attach Image{' '}
                   <Text style={styles.uploadOptional}>(Optional)</Text>
                 </Text>
               </View>
@@ -510,12 +530,25 @@ export default function ApplyLeaveScreen() {
                 onPress={handleChooseFile}
                 activeOpacity={0.75}
               >
-                <Text style={styles.chooseFileBtnText}>Choose File</Text>
+                <Text style={styles.chooseFileBtnText}>
+                  {pickedImage ? 'Change' : 'Choose Image'}
+                </Text>
               </TouchableOpacity>
             </View>
-            <Text style={[styles.fileNameText, fileName ? styles.fileNameTextActive : null]}>
-              {fileName ?? 'No file chosen'}
-            </Text>
+            {pickedImage ? (
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: pickedImage.uri }} style={styles.imagePreview} resizeMode="cover" />
+                <View style={styles.imageInfoRow}>
+                  <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                  <Text style={styles.imageNameText} numberOfLines={1}>{pickedImage.name}</Text>
+                  <TouchableOpacity onPress={() => setPickedImage(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.fileNameText}>No image chosen</Text>
+            )}
           </View>
         </ScrollView>
 
@@ -733,9 +766,31 @@ const styles = StyleSheet.create({
   fileNameText: {
     fontSize: 12,
     color: '#94A3B8',
-    marginTop: 2,
+    marginTop: 4,
   },
-  fileNameTextActive: {
+  imagePreviewWrap: {
+    marginTop: 8,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 140,
+    backgroundColor: '#F1F5F9',
+  },
+  imageInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAFC',
+  },
+  imageNameText: {
+    flex: 1,
+    fontSize: 12,
     color: '#16A34A',
     fontWeight: '500',
   },

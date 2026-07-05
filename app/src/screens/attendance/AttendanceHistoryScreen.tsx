@@ -343,7 +343,7 @@ export default function AttendanceHistoryScreen() {
               });
 
               const status = resolveRecordStatus(record);
-              const statusStyle = STATUS_STYLES[status];
+              const statusStyle = STATUS_STYLES[status] ?? STATUS_STYLES['on-time'];
               const isRemote = (record as any).isRemote ?? false;
 
               const punchIn = (record as any).punchIn

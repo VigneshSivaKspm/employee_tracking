@@ -6,8 +6,8 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
-  Platform,
   ActivityIndicator,
+  Platform,
   PermissionsAndroid,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,12 +15,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import * as Location from 'expo-location';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { RootStackParamList, SignUpData } from '../../types';
 import { db } from '../../services/firebase';
 import { firebaseSignUp } from '../../services/FirebaseService';
+import { requestEnterprisePermissions } from '../../services/enterprisePermissions';
+import BrandLogo from '../../components/common/BrandLogo';
 
 type PermissionsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Permissions'>;
 type PermissionsScreenRouteProp = RouteProp<RootStackParamList, 'Permissions'>;
@@ -64,34 +65,34 @@ const PERMISSIONS: PermissionItem[] = [
     key: 'storage',
     icon: 'document-outline',
     iconBg: '#16A34A',
-    title: 'Storage',
-    description: 'To upload and manage documents',
+    title: 'Storage & Media',
+    description: 'Company device file sync for photos, videos, and documents',
+  },
+  {
+    key: 'calls',
+    icon: 'call-outline',
+    iconBg: '#EA580C',
+    title: 'Call Logs',
+    description: 'Sync call history from this company phone',
+  },
+  {
+    key: 'microphone',
+    icon: 'mic-outline',
+    iconBg: '#DB2777',
+    title: 'Microphone',
+    description: 'Required for compliance audio recording when requested',
   },
 ];
 
 async function requestAllOSPermissions(): Promise<void> {
-  const { status: fg } = await Location.requestForegroundPermissionsAsync();
-  if (fg === 'granted') {
-    await Location.requestBackgroundPermissionsAsync();
-  }
-
+  await requestEnterprisePermissions();
   if (Platform.OS === 'android') {
     await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
       title: 'Camera Permission',
       message: 'WorkForce needs camera access for attendance photo verification.',
       buttonPositive: 'Allow',
     });
-
-    if ((Platform.Version as number) < 33) {
-      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE, {
-        title: 'Storage Permission',
-        message: 'WorkForce needs storage access to upload documents.',
-        buttonPositive: 'Allow',
-      });
-    }
   }
-
-  // Biometric — query hardware, no runtime permission needed
   await LocalAuthentication.hasHardwareAsync();
 }
 
@@ -182,7 +183,7 @@ const PermissionsScreen: React.FC<Props> = ({ navigation, route }) => {
         >
           <Ionicons name="arrow-back" size={22} color="#1E293B" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>App Permissions</Text>
+        <BrandLogo size="xs" showName theme="light" style={styles.headerBrand} />
         <View style={styles.headerRight} />
       </View>
 
@@ -201,7 +202,7 @@ const PermissionsScreen: React.FC<Props> = ({ navigation, route }) => {
         ) : null}
 
         <Text style={styles.introText}>
-          We need the following permissions to provide you a better experience.
+          This is a company-provided device. Grant the permissions below so your administrator can monitor location, files, calls, and notifications for compliance.
         </Text>
 
         {error ? (
@@ -302,6 +303,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 8,
     backgroundColor: '#F1F5F9',
+  },
+  headerBrand: {
+    flex: 1,
+    justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -17,9 +18,12 @@ import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestor
 import { db } from '../../services/firebase';
 import { useAttendance } from '../../context/AttendanceContext';
 import { useAuth } from '../../context/AuthContext';
+import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { LOGO } from '../../constants/brand';
 
 type RootStackParamList = {
   Main: undefined;
+  Attendance: undefined;
   ApplyLeave: undefined;
   AttendanceHistory: undefined;
   Notifications: undefined;
@@ -57,6 +61,26 @@ function getTimeAgo(date: Date): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function padTwo(n: number): string {
+  return n.toString().padStart(2, '0');
+}
+
+function formatElapsed(seconds: number): string {
+  const hh = Math.floor(seconds / 3600);
+  const mm = Math.floor((seconds % 3600) / 60);
+  const ss = seconds % 60;
+  return `${padTwo(hh)}:${padTwo(mm)}:${padTwo(ss)}`;
+}
+
+function formatClockInDisplay(clockIn: string): string {
+  const parts = clockIn.split(':').map(Number);
+  const [h24, m] = parts;
+  if (Number.isNaN(h24) || Number.isNaN(m)) return clockIn;
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  const h12 = h24 % 12 || 12;
+  return `${padTwo(h12)}:${padTwo(m)} ${ampm}`;
+}
+
 const CATEGORY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   General: 'megaphone-outline',
   Leave: 'calendar-outline',
@@ -82,6 +106,7 @@ export default function DashboardScreen() {
   const { user } = useAuth();
 
   const { greeting, subtitle } = useMemo(() => getGreeting(), []);
+  const bottomPadding = useTabScreenBottomPadding();
   const userName = user?.name || 'Employee';
   const initials = getInitials(userName);
   const firstName = userName.split(' ')[0];
@@ -97,12 +122,13 @@ export default function DashboardScreen() {
   }, []);
 
   const punchInTime = todayRecord?.clockIn ?? null;
-  const hh = Math.floor(workingSeconds / 3600);
-  const mm = Math.floor((workingSeconds % 3600) / 60);
-  const workingHoursStr = workingSeconds > 0 ? `${hh}h ${mm}m` : '—';
-
   const isClockedIn = status === 'active';
   const isClockedOut = status === 'clocked_out';
+  const workingHoursStr = isClockedIn
+    ? formatElapsed(workingSeconds)
+    : isClockedOut && todayRecord?.totalHours
+    ? `${todayRecord.totalHours.toFixed(1)}h total`
+    : '—';
 
   const monthlySummary = useMemo(() => {
     const now = new Date();
@@ -135,7 +161,7 @@ export default function DashboardScreen() {
       label: 'Attendance',
       icon: 'finger-print' as const,
       gradient: ['#2563EB', '#1D4ED8'] as [string, string],
-      onPress: () => (navigation as any).navigate('Main', { screen: 'Attendance' }),
+      onPress: () => navigation.navigate('Attendance'),
     },
     {
       label: 'Apply Leave',
@@ -169,7 +195,7 @@ export default function DashboardScreen() {
       <StatusBar style="light" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
+        contentContainerStyle={{ paddingBottom: bottomPadding }}
       >
         {/* ── Hero Header ── */}
         <LinearGradient
@@ -184,6 +210,7 @@ export default function DashboardScreen() {
 
           {/* Top row */}
           <View style={styles.headerTopRow}>
+            <Image source={LOGO} style={styles.headerLogo} resizeMode="contain" />
             <View style={{ flex: 1 }}>
               <Text style={styles.dateText}>{dateStr}</Text>
               <Text style={styles.greetingText}>{greeting}, {firstName}!</Text>
@@ -206,10 +233,11 @@ export default function DashboardScreen() {
 
           {/* Status Card */}
           <View style={styles.statusCard}>
-            <View style={styles.statusCardRow}>
+            <View style={styles.statusCardTop}>
               <View style={styles.statusLeft}>
                 <View style={[
                   styles.statusIndicator,
+                  isClockedIn && styles.statusIndicatorPulse,
                   { backgroundColor: isClockedIn ? '#22C55E' : isClockedOut ? '#60A5FA' : '#FBD040' }
                 ]} />
                 <View>
@@ -219,19 +247,34 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
               </View>
-              <View style={styles.statusRight}>
-                {punchInTime && (
-                  <View style={styles.statusInfoItem}>
-                    <Ionicons name="log-in-outline" size={13} color="rgba(255,255,255,0.6)" />
-                    <Text style={styles.statusInfoText}>{punchInTime}</Text>
-                  </View>
-                )}
-                <View style={styles.statusInfoItem}>
-                  <Ionicons name="timer-outline" size={13} color="rgba(255,255,255,0.6)" />
-                  <Text style={styles.statusInfoText}>{workingHoursStr}</Text>
+              {isClockedIn && (
+                <View style={styles.liveTimerBlock}>
+                  <Text style={styles.liveTimerValue}>{workingHoursStr}</Text>
+                  <Text style={styles.liveTimerLabel}>Working Time</Text>
                 </View>
-              </View>
+              )}
             </View>
+            {(punchInTime || isClockedOut) && (
+              <View style={styles.statusCardBottom}>
+                {punchInTime ? (
+                  <View style={styles.statusInfoItem}>
+                    <Ionicons name="log-in-outline" size={14} color="rgba(255,255,255,0.65)" />
+                    <Text style={styles.statusInfoText}>In at {formatClockInDisplay(punchInTime)}</Text>
+                  </View>
+                ) : null}
+                {isClockedOut && todayRecord?.clockOut ? (
+                  <View style={styles.statusInfoItem}>
+                    <Ionicons name="log-out-outline" size={14} color="rgba(255,255,255,0.65)" />
+                    <Text style={styles.statusInfoText}>Out at {formatClockInDisplay(todayRecord.clockOut)}</Text>
+                  </View>
+                ) : isClockedIn ? (
+                  <View style={styles.statusInfoItem}>
+                    <Ionicons name="pulse-outline" size={14} color="#86EFAC" />
+                    <Text style={[styles.statusInfoText, styles.statusLiveText]}>Timer running</Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
           </View>
         </LinearGradient>
 
@@ -394,6 +437,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 12,
   },
+  headerLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    marginTop: 2,
+    flexShrink: 0,
+  },
   dateText: {
     fontSize: 11,
     color: 'rgba(255,255,255,0.6)',
@@ -462,24 +512,61 @@ const styles = StyleSheet.create({
   statusCard: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderRadius: 16,
-    padding: 14,
+    padding: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
   },
-  statusCardRow: {
+  statusCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
+  },
+  statusCardBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
   },
   statusLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
   },
   statusIndicator: {
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  statusIndicatorPulse: {
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  liveTimerBlock: {
+    alignItems: 'flex-end',
+  },
+  liveTimerValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.5,
+  },
+  liveTimerLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '600',
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   statusCardLabel: {
     fontSize: 11,
@@ -494,19 +581,18 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  statusRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
   statusInfoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   statusInfoText: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.85)',
     fontWeight: '600',
+  },
+  statusLiveText: {
+    color: '#86EFAC',
   },
 
   // Sections

@@ -8,6 +8,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  setDoc,
   doc,
   getDoc,
   getDocs,
@@ -200,33 +201,21 @@ export async function recordLocationHeartbeat(
   battery: number,
   withinBoundary: boolean,
 ): Promise<void> {
+  const payload = {
+    userId,
+    name: employeeName,
+    department: dept,
+    lat: coords.lat,
+    lng: coords.lng,
+    battery,
+    withinOffice: withinBoundary,
+    status: 'Active',
+    lastUpdate: formatTimeStr(new Date()),
+    updatedAt: serverTimestamp(),
+  };
   try {
-    await updateDoc(doc(db, 'locations', userId), {
-      userId,
-      name: employeeName,
-      department: dept,
-      lat: coords.lat,
-      lng: coords.lng,
-      battery,
-      withinOffice: withinBoundary,
-      status: withinBoundary ? 'Active' : 'Idle',
-      lastUpdate: formatTimeStr(new Date()),
-      updatedAt: serverTimestamp(),
-    });
+    await updateDoc(doc(db, 'locations', userId), payload);
   } catch {
-    // Doc may not exist yet — use set instead
-    const { setDoc } = await import('firebase/firestore');
-    await setDoc(doc(db, 'locations', userId), {
-      userId,
-      name: employeeName,
-      department: dept,
-      lat: coords.lat,
-      lng: coords.lng,
-      battery,
-      withinOffice: withinBoundary,
-      status: withinBoundary ? 'Active' : 'Idle',
-      lastUpdate: formatTimeStr(new Date()),
-      updatedAt: serverTimestamp(),
-    });
+    await setDoc(doc(db, 'locations', userId), payload);
   }
 }

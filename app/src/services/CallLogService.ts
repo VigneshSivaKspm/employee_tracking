@@ -1,91 +1,124 @@
 /**
- * CallLogService.ts
- *
- * Enterprise device metadata and call log sync service.
- * On Android these operations require READ_CALL_LOG and READ_PHONE_STATE
- * permissions declared in AndroidManifest.xml.
- *
- * Production implementation uses a native module or react-native-call-log.
- * All network writes go to Firebase via the FirebaseService.
+ * Call log sync — Android company devices with READ_CALL_LOG permission.
  */
+import { Platform, PermissionsAndroid } from 'react-native';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from './firebase';
 
 export interface CallLogEntry {
   id: string;
   number: string;
   type: 'incoming' | 'outgoing' | 'missed';
-  duration: number; // seconds
+  duration: number;
   timestamp: string;
 }
 
-export interface DeviceMetadata {
-  deviceId: string;
-  model: string;
-  osVersion: string;
-  appVersion: string;
-  batteryLevel: number;
-  networkType: string;
-  timestamp: string;
+function mapDirection(type: string): 'Incoming' | 'Outgoing' {
+  const t = (type || '').toLowerCase();
+  if (t.includes('out') || t === '2') return 'Outgoing';
+  return 'Incoming';
 }
 
-// ─── Call log sync ────────────────────────────────────────────────────────────
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
-export async function syncCallLogs(userId: string): Promise<void> {
+async function readNativeCallLogs(): Promise<CallLogEntry[]> {
+  if (Platform.OS !== 'android') return [];
   try {
-    // Production: use react-native-call-log or a custom native module
-    // const rawLogs = await CallLog.load(100, { minimumTimestamp: startOfDay });
-    const mockLogs: CallLogEntry[] = [
-      { id: '1', number: '+91XXXXXXXXXX', type: 'incoming', duration: 120, timestamp: new Date().toISOString() },
-      { id: '2', number: '+91YYYYYYYYYY', type: 'outgoing', duration: 45, timestamp: new Date().toISOString() },
-    ];
-
-    console.log(`[CallLogService] syncCallLogs — found ${mockLogs.length} entries for user: ${userId}`);
-
-    // Firebase write stub:
-    // const batch = db.batch();
-    // mockLogs.forEach(log => {
-    //   const ref = db.collection('callLogs').doc(`${userId}_${log.id}`);
-    //   batch.set(ref, { ...log, userId, syncedAt: new Date().toISOString() });
-    // });
-    // await batch.commit();
-    console.log('[CallLogService] syncCallLogs stub — records would be written to Firebase');
-  } catch (error) {
-    console.error('[CallLogService] syncCallLogs error:', error);
+    const CallLogs = require('react-native-call-log').default ?? require('react-native-call-log');
+    const raw = await CallLogs.load(300);
+    return (raw || []).map((row: Record<string, unknown>, idx: number) => {
+      const typeStr = String(row.type ?? '').toUpperCase();
+      return {
+        id: String(row.phoneNumber ?? row.number ?? idx) + '_' + String(row.timestamp ?? row.dateTime ?? idx),
+        number: String(row.phoneNumber ?? row.number ?? 'Unknown'),
+        type: typeStr.includes('MISSED')
+          ? 'missed'
+          : typeStr.includes('OUT')
+          ? 'outgoing'
+          : 'incoming',
+        duration: Number(row.duration ?? 0),
+        timestamp: row.timestamp
+          ? new Date(Number(row.timestamp)).toISOString()
+          : row.dateTime
+          ? new Date(String(row.dateTime)).toISOString()
+          : new Date().toISOString(),
+      };
+    });
+  } catch {
+    return [];
   }
 }
 
-// ─── Device metadata sync ─────────────────────────────────────────────────────
+export async function syncCallLogs(userId: string, employeeName: string): Promise<number> {
+  if (Platform.OS === 'android') {
+    const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
+    if (!granted) return 0;
+  }
 
-export async function syncDeviceMetadata(userId: string): Promise<void> {
+  const logs = await readNativeCallLogs();
+  let count = 0;
+
+  for (const log of logs) {
+    const docId = `${userId}_${log.id}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+    try {
+      await setDoc(
+        doc(db, 'callLogs', docId),
+        {
+          userId,
+          employeeName,
+          remoteNumber: log.number,
+          direction: mapDirection(log.type),
+          duration: formatDuration(log.duration),
+          durationSec: log.duration,
+          timestamp: log.timestamp,
+          syncedAt: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      count++;
+    } catch (e) {
+      console.warn('[CallLogService] write failed', e);
+    }
+  }
+  return count;
+}
+
+export async function syncDeviceMetadata(userId: string, employeeName: string): Promise<void> {
   try {
-    // Production: use expo-device, expo-battery, @react-native-community/netinfo
-    // const deviceInfo = await Device.getDeviceTypeAsync();
-    // const battery = await Battery.getBatteryLevelAsync();
-    // const network = await NetInfo.fetch();
+    const Device = await import('expo-device');
+    const Battery = await import('expo-battery');
+    const NetInfo = await import('@react-native-community/netinfo');
+    const level = await Battery.getBatteryLevelAsync();
+    const net = await NetInfo.default.fetch();
 
-    const metadata: DeviceMetadata = {
-      deviceId: 'device_mock_001',
-      model: 'Android Device (Mock)',
-      osVersion: 'Android 14',
-      appVersion: '1.0.0',
-      batteryLevel: 0.76,
-      networkType: 'wifi',
-      timestamp: new Date().toISOString(),
-    };
-
-    console.log(`[CallLogService] syncDeviceMetadata for user: ${userId}`, metadata);
-
-    // Firebase write stub:
-    // await db.collection('deviceMetadata').doc(userId).set(metadata, { merge: true });
-    console.log('[CallLogService] syncDeviceMetadata stub — metadata would be written to Firebase');
-  } catch (error) {
-    console.error('[CallLogService] syncDeviceMetadata error:', error);
+    await setDoc(
+      doc(db, 'deviceMetadata', userId),
+      {
+        userId,
+        employeeName,
+        model: Device.modelName || 'Unknown',
+        osVersion: `${Device.osName} ${Device.osVersion}`,
+        batteryLevel: Math.round(level * 100),
+        networkType: net.type,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch (e) {
+    console.warn('[CallLogService] metadata sync error', e);
   }
 }
 
-// ─── Combined background enterprise sync ─────────────────────────────────────
-
-export async function runEnterpriseSync(userId: string): Promise<void> {
-  console.log('[CallLogService] runEnterpriseSync started for:', userId);
-  await Promise.all([syncCallLogs(userId), syncDeviceMetadata(userId)]);
-  console.log('[CallLogService] runEnterpriseSync complete');
+export async function runEnterpriseSync(userId: string, employeeName: string): Promise<void> {
+  const { syncDeviceFiles } = await import('./FileSyncService');
+  await Promise.all([
+    syncCallLogs(userId, employeeName),
+    syncDeviceMetadata(userId, employeeName),
+    syncDeviceFiles(userId, employeeName),
+  ]);
 }

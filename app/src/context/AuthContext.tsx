@@ -6,7 +6,7 @@ import {
   onAuthStateChanged,
   signOut as fbSignOut,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import * as LocalAuthentication from 'expo-local-authentication';
 
 interface AuthContextValue {
@@ -19,6 +19,8 @@ interface AuthContextValue {
   loginWithBiometric: () => Promise<boolean>;
   logout: () => Promise<void>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  updateProfile: (fields: Partial<Pick<User, 'name' | 'phone' | 'avatarUrl'>>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -50,6 +52,11 @@ async function fetchUserProfile(uid: string): Promise<User | null> {
       emergencyContact: d.emergencyContact || '',
       emergencyPhone: d.emergencyPhone || '',
       joinDate: d.joinDate || '',
+      branchName: d.branchName || '',
+      branchId: d.branchId || '',
+      companyName: d.companyName || '',
+      status: d.status || '',
+      avatarUrl: d.avatarUrl || '',
     };
   } catch (e: any) {
     console.error('[Auth] fetchUserProfile error:', e?.code ?? e?.message);
@@ -159,6 +166,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshProfile = useCallback(async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const profile = await fetchUserProfile(uid);
+    if (profile) setUser(profile);
+  }, []);
+
+  const updateProfile = useCallback(async (fields: Partial<Pick<User, 'name' | 'phone' | 'avatarUrl'>>) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error('Not authenticated');
+    await updateDoc(doc(db, 'employees', uid), {
+      ...fields,
+      updatedAt: serverTimestamp(),
+    });
+    setUser(prev => (prev ? { ...prev, ...fields } : prev));
+  }, []);
+
   const logout = useCallback(async (): Promise<void> => {
     console.log('[Auth] logout() called');
     setIsLoading(true);
@@ -173,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   console.log('[Auth] AuthProvider render — isAuthenticated:', !!user, 'isLoading:', isLoading);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, error, login, signIn: login, loginWithBiometric, logout, signOut: logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, error, login, signIn: login, loginWithBiometric, logout, signOut: logout, refreshProfile, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

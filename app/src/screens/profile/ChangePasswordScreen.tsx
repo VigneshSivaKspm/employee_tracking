@@ -23,7 +23,6 @@ type RootStackParamList = {
   AnnouncementDetail: { announcementId: string };
   Settings: undefined;
   SubscriptionPlans: undefined;
-  EngineeringMenu: undefined;
   Login: undefined;
 };
 

@@ -11,7 +11,7 @@ import { collection, query, where, orderBy, limit, onSnapshot, doc, getDoc } fro
 import { db } from '../services/firebase';
 import type { AttendanceRecord, AttendanceStatus, LeaveRequest, User } from '../types';
 import { recordPunchIn, recordPunchOut, submitLeaveRequest } from '../services/FirebaseService';
-import { getCurrentPosition, isWithinOfficeBoundary, startBackgroundTracking, stopBackgroundTracking } from '../services/LocationService';
+import { getCurrentPosition, isWithinOfficeBoundary } from '../services/LocationService';
 import type { LeaveBalance } from '../types';
 
 interface AttendanceContextValue {
@@ -45,6 +45,21 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+function getLocalDateStr(date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function parseClockInTime(clockIn: string): Date {
+  const parts = clockIn.split(':').map(Number);
+  const [h, m, s = 0] = parts;
+  const d = new Date();
+  d.setHours(h, m, s, 0);
+  return d;
+}
+
 export function AttendanceProvider({ children, user }: { children: ReactNode; user: User }) {
   const userId = user.id;
 
@@ -54,19 +69,35 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
   const [workingSeconds, setWorkingSeconds] = useState(0);
   const [isWithinOffice, setIsWithinOffice] = useState<boolean | null>(null);
   const [isPunching, setIsPunching] = useState(false);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [sessionClockIn, setSessionClockIn] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const punchInTimeRef = useRef<Date | null>(null);
   const firebaseDocIdRef = useRef<string | null>(null);
 
-  const todayDate = new Date().toISOString().split('T')[0];
-  const todayRecord = history.find(r => r.date === todayDate) ?? null;
-  const status: AttendanceStatus =
-    !todayRecord || !todayRecord.clockIn
-      ? 'not_clocked_in'
-      : todayRecord.clockOut
-      ? 'clocked_out'
-      : 'active';
+  const todayDate = getLocalDateStr();
+  const todayRecordFromDb = history.find(r => r.date === todayDate) ?? null;
+
+  const todayRecord: AttendanceRecord | null = todayRecordFromDb ?? (
+    sessionActive && sessionClockIn
+      ? {
+          id: firebaseDocIdRef.current || 'local-session',
+          date: todayDate,
+          clockIn: sessionClockIn,
+          clockOut: null,
+          status: 'on_time',
+          totalHours: 0,
+          isRemote: false,
+        }
+      : null
+  );
+
+  const status: AttendanceStatus = todayRecordFromDb?.clockOut
+    ? 'clocked_out'
+    : todayRecordFromDb?.clockIn || sessionActive
+    ? 'active'
+    : 'not_clocked_in';
 
   // ─── Firestore real-time listeners ───────────────────────────────────────────
   useEffect(() => {
@@ -112,7 +143,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
             startDate: data.startDate || '',
             endDate: data.endDate || '',
             reason: data.reason || '',
-            status: data.status || 'pending',
+            status: ((data.status || 'pending') as string).toLowerCase() as LeaveRequest['status'],
             appliedOn: data.appliedOn || '',
             hasDocument: data.hasDocument || false,
             totalDays: data.totalDays || 1,
@@ -134,25 +165,20 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
     };
   }, [userId]);
 
-  // ─── Restore timer if already punched in ──────────────────────────────────
+  // Keep punch-out doc id in sync after app reload
   useEffect(() => {
-    if (status === 'active' && todayRecord?.clockIn) {
-      const [h, m] = todayRecord.clockIn.split(':').map(Number);
-      const now = new Date();
-      const clockInDate = new Date(now);
-      clockInDate.setHours(h, m, 0, 0);
-      const elapsed = Math.max(0, Math.floor((now.getTime() - clockInDate.getTime()) / 1000));
-      punchInTimeRef.current = clockInDate;
-      setWorkingSeconds(elapsed);
-      startTimer();
+    if (todayRecordFromDb?.id) {
+      firebaseDocIdRef.current = todayRecordFromDb.id;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayRecord?.clockIn]);
+  }, [todayRecordFromDb?.id]);
 
-  const startTimer = useCallback(() => {
-    if (timerRef.current) return;
-    timerRef.current = setInterval(() => setWorkingSeconds(s => s + 1), 1000);
-  }, []);
+  // Clear optimistic session once Firestore confirms punch-out
+  useEffect(() => {
+    if (todayRecordFromDb?.clockOut) {
+      setSessionActive(false);
+      setSessionClockIn(null);
+    }
+  }, [todayRecordFromDb?.clockOut]);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) {
@@ -160,6 +186,42 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
       timerRef.current = null;
     }
   }, []);
+
+  // ─── Working timer (runs while clocked in) ────────────────────────────────
+  useEffect(() => {
+    if (status !== 'active') {
+      stopTimer();
+      if (status === 'clocked_out' && todayRecordFromDb?.totalHours) {
+        setWorkingSeconds(Math.floor(todayRecordFromDb.totalHours * 3600));
+      } else if (status === 'not_clocked_in') {
+        setWorkingSeconds(0);
+        punchInTimeRef.current = null;
+      }
+      return;
+    }
+
+    const clockInStr = todayRecordFromDb?.clockIn ?? sessionClockIn;
+    if (!clockInStr) return;
+
+    if (!punchInTimeRef.current) {
+      punchInTimeRef.current = parseClockInTime(clockInStr);
+    }
+
+    const tick = () => {
+      if (!punchInTimeRef.current) return;
+      const elapsed = Math.max(
+        0,
+        Math.floor((Date.now() - punchInTimeRef.current.getTime()) / 1000),
+      );
+      setWorkingSeconds(elapsed);
+    };
+
+    tick();
+    stopTimer();
+    timerRef.current = setInterval(tick, 1000);
+
+    return () => stopTimer();
+  }, [status, todayRecordFromDb?.clockIn, todayRecordFromDb?.clockOut, sessionClockIn, stopTimer]);
 
   useEffect(() => () => stopTimer(), [stopTimer]);
 
@@ -177,7 +239,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
       const coords = await getCurrentPosition();
       const now = new Date();
       const clockInStr = formatTime(now);
-      const dateStr = now.toISOString().split('T')[0];
+      const dateStr = getLocalDateStr(now);
       const isRemote = coords ? !isWithinOfficeBoundary(coords) : true;
       const isLate = now.getHours() > 9 || (now.getHours() === 9 && now.getMinutes() > 15);
 
@@ -193,33 +255,30 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
 
       firebaseDocIdRef.current = docId;
       punchInTimeRef.current = now;
+      setSessionActive(true);
+      setSessionClockIn(clockInStr);
       setWorkingSeconds(0);
-      startTimer();
       if (coords) setIsWithinOffice(isWithinOfficeBoundary(coords));
-      startBackgroundTracking({
-        userId,
-        employeeName: user.name,
-        department: user.department,
-      });
     } finally {
       setIsPunching(false);
     }
-  }, [userId, user, startTimer]);
+  }, [userId, user]);
 
   // ─── Punch Out ────────────────────────────────────────────────────────────
   const punchOut = useCallback(async () => {
     setIsPunching(true);
     try {
       const coords = await getCurrentPosition();
-      const now = new Date();
-      const clockOutStr = formatTime(now);
+      const clockOutStr = formatTime(new Date());
       const totalHours = parseFloat((workingSeconds / 3600).toFixed(2));
 
       if (firebaseDocIdRef.current) {
         await recordPunchOut(userId, firebaseDocIdRef.current, coords ?? { lat: 0, lng: 0 }, totalHours, clockOutStr);
       }
+      setSessionActive(false);
+      setSessionClockIn(null);
+      punchInTimeRef.current = null;
       stopTimer();
-      stopBackgroundTracking();
     } finally {
       setIsPunching(false);
     }

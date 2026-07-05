@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAttendance } from '../../context/AttendanceContext';
+import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
 
 const { width } = Dimensions.get('window');
 
@@ -53,6 +54,7 @@ function parseTimeToMinutes(timeStr: string): number {
 
 export default function AnalyticsScreen() {
   const insets = useSafeAreaInsets();
+  const bottomPadding = useTabScreenBottomPadding();
   const { attendanceHistory } = useAttendance();
 
   const now = new Date();
@@ -157,7 +159,7 @@ export default function AnalyticsScreen() {
       <StatusBar style="light" />
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -296,7 +298,7 @@ export default function AnalyticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9' },
   scrollView: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
+  scrollContent: {},
   header: { paddingHorizontal: 20, paddingBottom: 48, alignItems: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
   monthNav: { flexDirection: 'row', alignItems: 'center', gap: 16 },

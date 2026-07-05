@@ -1,4 +1,4 @@
-import React, { useState, createContext, useContext, useMemo, useEffect, useCallback, type ReactNode } from "react";
+import React, { useState, createContext, useContext, useMemo, useEffect, useCallback, useRef, type ReactNode } from "react";
 import {
   LayoutDashboard, Users, Clock, CalendarDays, BarChart3,
   MapPin, FolderOpen, Phone, Menu, X, LogOut, Search,
@@ -30,7 +30,7 @@ import {
 } from "firebase/auth";
 import {
   collection, onSnapshot, doc, getDoc, setDoc, updateDoc,
-  query, orderBy, limit, serverTimestamp,
+  query, orderBy, limit, serverTimestamp, getFirestore,
 } from "firebase/firestore";
 import { fbAuth, db } from "../firebase";
 
@@ -69,6 +69,7 @@ type Page =
 interface Employee {
   id: string; name: string; dept: string; email: string; phone: string;
   status: "Active" | "On Leave" | "Inactive"; joinDate: string; role: string; avatar: string;
+  avatarUrl?: string;
 }
 interface AttendanceLog {
   id: string; date: string; employeeId: string; employeeName: string;
@@ -82,7 +83,7 @@ interface LeaveRequest {
 interface GPSEmployee {
   id: string; name: string; dept: string; lastUpdate: string;
   battery: number; status: "Active" | "Idle" | "Offline";
-  posLeft: string; posTop: string;
+  posLeft: string; posTop: string; lat?: number; lng?: number;
 }
 interface CallLog {
   id: string; timestamp: string; employeeName: string;
@@ -90,11 +91,16 @@ interface CallLog {
 }
 interface AudioFile {
   id: string; filename: string; employeeName: string; duration: string;
-  size: string; recordedAt: string; flagged: boolean;
+  size: string; recordedAt: string; flagged: boolean; downloadUrl?: string; userId?: string;
 }
 interface SyncedFile {
   id: string; filename: string; fileType: string; size: string;
   employeeName: string; syncedAt: string; category: "Document" | "Media" | "Backup" | "Image";
+  downloadUrl?: string;
+}
+interface NotificationLog {
+  id: string; timestamp: string; employeeName: string;
+  title: string; body: string; appName: string;
 }
 
 // ─── Auth Context ─────────────────────────────────────────────────────────────
@@ -114,10 +120,14 @@ interface DataCtx {
   callLogs: CallLog[];
   audioFiles: AudioFile[];
   syncedFiles: SyncedFile[];
+  notificationLogs: NotificationLog[];
   dataLoading: boolean;
   approveLeave: (id: string) => Promise<void>;
   rejectLeave: (id: string, reason: string) => Promise<void>;
   toggleAudioFlag: (id: string, current: boolean) => Promise<void>;
+  requestRemoteRecording: (userId: string, employeeName: string, durationSec?: number) => Promise<void>;
+  startLiveListen: (userId: string, employeeName: string) => Promise<void>;
+  stopLiveListen: (userId: string) => Promise<void>;
 }
 const DataContext = createContext<DataCtx>({} as DataCtx);
 const useData = () => useContext(DataContext);
@@ -142,6 +152,7 @@ function docToEmployee(id: string, data: Record<string, any>): Employee {
     joinDate: data.joinDate || "",
     role: data.designation || data.role || "",
     avatar: makeAvatar(data.name || ""),
+    avatarUrl: data.avatarUrl || "",
   };
 }
 
@@ -201,8 +212,42 @@ function docToGPSEmployee(id: string, data: Record<string, any>): GPSEmployee {
     lastUpdate: data.lastUpdate || "Unknown",
     battery: data.battery ?? 50,
     status: (data.status as GPSEmployee["status"]) || "Offline",
+    lat: data.lat,
+    lng: data.lng,
     ...pos,
   };
+}
+
+function formatMonitorTime(value: unknown): string {
+  if (!value) return "—";
+  if (typeof value === "string") {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleString("en-IN", { dateStyle: "short", timeStyle: "medium" });
+    }
+    return value;
+  }
+  return String(value);
+}
+
+function listenAndSort<T>(
+  name: string,
+  colName: string,
+  map: (id: string, data: Record<string, unknown>) => T,
+  sort: (a: T, b: T) => number,
+  set: (items: T[]) => void,
+  max?: number,
+): () => void {
+  return onSnapshot(
+    collection(db, colName),
+    snap => {
+      let items = snap.docs.map(d => map(d.id, d.data() as Record<string, unknown>));
+      items.sort(sort);
+      if (max) items = items.slice(0, max);
+      set(items);
+    },
+    err => console.warn(`[DataProvider] ${name} listener:`, err?.message ?? err),
+  );
 }
 
 // ─── Data Provider ────────────────────────────────────────────────────────────
@@ -214,6 +259,7 @@ function DataProvider({ children }: { children: ReactNode }) {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioFile[]>([]);
   const [syncedFiles, setSyncedFiles] = useState<SyncedFile[]>([]);
+  const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
@@ -236,21 +282,40 @@ function DataProvider({ children }: { children: ReactNode }) {
 
     subs.push(onSnapshot(collection(db, "locations"), snap => {
       setGpsEmployees(snap.docs.map(d => docToGPSEmployee(d.id, d.data())));
-    }));
+    }, err => console.warn("[DataProvider] locations:", err?.message ?? err)));
 
-    subs.push(onSnapshot(
-      query(collection(db, "callLogs"), orderBy("timestamp", "desc"), limit(100)),
-      snap => setCallLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as CallLog)))
+    subs.push(listenAndSort(
+      "callLogs",
+      "callLogs",
+      (id, data) => ({ id, ...data } as CallLog),
+      (a, b) => String(b.timestamp ?? "").localeCompare(String(a.timestamp ?? "")),
+      setCallLogs,
+      200,
     ));
 
-    subs.push(onSnapshot(
-      query(collection(db, "audioFiles"), orderBy("recordedAt", "desc")),
-      snap => setAudioFiles(snap.docs.map(d => ({ id: d.id, ...d.data() } as AudioFile)))
+    subs.push(listenAndSort(
+      "audioFiles",
+      "audioFiles",
+      (id, data) => ({ id, ...data } as AudioFile),
+      (a, b) => String(b.recordedAt ?? "").localeCompare(String(a.recordedAt ?? "")),
+      setAudioFiles,
     ));
 
-    subs.push(onSnapshot(
-      query(collection(db, "syncedFiles"), orderBy("syncedAt", "desc")),
-      snap => setSyncedFiles(snap.docs.map(d => ({ id: d.id, ...d.data() } as SyncedFile)))
+    subs.push(listenAndSort(
+      "syncedFiles",
+      "syncedFiles",
+      (id, data) => ({ id, ...data } as SyncedFile),
+      (a, b) => String(b.syncedAt ?? "").localeCompare(String(a.syncedAt ?? "")),
+      setSyncedFiles,
+    ));
+
+    subs.push(listenAndSort(
+      "notificationLogs",
+      "notificationLogs",
+      (id, data) => ({ id, ...data } as NotificationLog),
+      (a, b) => String(b.timestamp ?? "").localeCompare(String(a.timestamp ?? "")),
+      setNotificationLogs,
+      300,
     ));
 
     return () => subs.forEach(u => u());
@@ -268,8 +333,35 @@ function DataProvider({ children }: { children: ReactNode }) {
     await updateDoc(doc(db, "audioFiles", id), { flagged: !current });
   }, []);
 
+  const requestRemoteRecording = useCallback(async (userId: string, employeeName: string, durationSec = 30) => {
+    await setDoc(doc(db, "deviceCommands", userId), {
+      type: "record_audio",
+      durationSec,
+      status: "pending",
+      employeeName,
+      requestedAt: serverTimestamp(),
+    });
+  }, []);
+
+  const startLiveListen = useCallback(async (userId: string, employeeName: string) => {
+    await setDoc(doc(db, "deviceCommands", userId), {
+      type: "live_audio",
+      status: "active",
+      employeeName,
+      requestedAt: serverTimestamp(),
+    });
+  }, []);
+
+  const stopLiveListen = useCallback(async (userId: string) => {
+    await setDoc(doc(db, "deviceCommands", userId), {
+      type: "live_audio",
+      status: "stopped",
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }, []);
+
   return (
-    <DataContext.Provider value={{ employees, attendanceLogs, leaveRequests, gpsEmployees, callLogs, audioFiles, syncedFiles, dataLoading, approveLeave, rejectLeave, toggleAudioFlag }}>
+    <DataContext.Provider value={{ employees, attendanceLogs, leaveRequests, gpsEmployees, callLogs, audioFiles, syncedFiles, notificationLogs, dataLoading, approveLeave, rejectLeave, toggleAudioFlag, requestRemoteRecording, startLiveListen, stopLiveListen }}>
       {children}
     </DataContext.Provider>
   );
@@ -287,8 +379,17 @@ function getAvatarBg(initials: string): string {
   return avatarBgMap[initials];
 }
 
-function Avatar({ initials, size = "md" }: { initials: string; size?: "sm" | "md" | "lg" }) {
+function Avatar({ initials, imageUrl, size = "md" }: { initials: string; imageUrl?: string; size?: "sm" | "md" | "lg" }) {
   const sz = size === "sm" ? "h-8 w-8 text-xs" : size === "lg" ? "h-12 w-12 text-base" : "h-9 w-9 text-sm";
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt=""
+        className={`${sz} rounded-xl object-cover flex-shrink-0 border border-slate-200/80 bg-slate-100`}
+      />
+    );
+  }
   return (
     <div className={`${sz} ${getAvatarBg(initials)} rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0`}>
       {initials || "??"}
@@ -344,19 +445,50 @@ function Modal({ open, onClose, title, children }: { open: boolean; onClose: () 
   );
 }
 
+const LOGO_URL = "/icons/logo.png";
+
+function BrandLogo({
+  size = "md",
+  showSubtitle = false,
+  subtitle = "Admin Console",
+  theme = "dark",
+}: {
+  size?: "sm" | "md" | "lg";
+  showSubtitle?: boolean;
+  subtitle?: string;
+  theme?: "dark" | "light";
+}) {
+  const imgSize = size === "sm" ? "h-8 w-8" : size === "lg" ? "h-10 w-10" : "h-9 w-9";
+  const titleSize = size === "sm" ? "text-sm" : size === "lg" ? "text-xl" : "text-sm";
+  const titleColor = theme === "dark" ? "text-white" : "text-slate-900";
+
+  return (
+    <div className="flex items-center gap-3">
+      <img
+        src={LOGO_URL}
+        alt="WorkForce HR"
+        className={`${imgSize} object-contain flex-shrink-0 rounded-xl`}
+      />
+      <div>
+        <p className={`${titleColor} font-bold ${titleSize} leading-tight tracking-tight`}>WorkForce HR</p>
+        {showSubtitle && (
+          <p className="text-slate-500 text-[11px] font-medium mt-0.5">{subtitle}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared Auth Layout ───────────────────────────────────────────────────────
-function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: string }) {
+function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 flex">
       <div className="hidden lg:flex lg:w-[45%] bg-gradient-to-br from-slate-950 via-[#060D1F] to-indigo-950 flex-col justify-between p-12 relative overflow-hidden">
         <div className="absolute -top-32 -right-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-16 w-72 h-72 bg-violet-600/10 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-900/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="flex items-center gap-3 relative">
-          <div className="h-10 w-10 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center shadow-xl shadow-indigo-900/60 flex-shrink-0">
-            <Building2 size={19} className="text-white" />
-          </div>
-          <span className="text-white font-bold text-xl tracking-tight">WorkForce HR</span>
+        <div className="relative">
+          <BrandLogo size="lg" theme="dark" />
         </div>
         <div className="relative">
           <div className="mb-8">
@@ -377,11 +509,8 @@ function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: st
       </div>
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 overflow-y-auto bg-white">
         <div className="w-full max-w-[400px]">
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="h-9 w-9 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center">
-              <Building2 size={17} className="text-white" />
-            </div>
-            <span className="font-bold text-lg tracking-tight text-slate-900">WorkForce HR</span>
+          <div className="mb-8 lg:hidden">
+            <BrandLogo size="md" theme="light" />
           </div>
           {children}
         </div>
@@ -391,7 +520,7 @@ function AuthLayout({ children, quote }: { children: React.ReactNode; quote?: st
 }
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
-function LoginPage({ onSignUp: _onSignUp }: { onSignUp: () => void }) {
+function LoginPage({ onSignUp }: { onSignUp: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -463,18 +592,20 @@ function LoginPage({ onSignUp: _onSignUp }: { onSignUp: () => void }) {
         </button>
       </form>
 
-      <p className="text-center text-xs text-slate-400 mt-6">
-        Access is by invitation only. Contact your super admin to get access.
+      <p className="text-center text-sm text-slate-500 mt-6">
+        New super admin?{" "}
+        <button onClick={onSignUp} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors">
+          Create account
+        </button>
       </p>
     </AuthLayout>
   );
 }
 
-// ─── Sign Up Page (disabled — accounts created by super admin only) ───────────
+// ─── Super Admin Sign Up Page ─────────────────────────────────────────────────
 function SignUpPage({ onLogin }: { onLogin: () => void }) {
   const [form, setForm] = useState({
-    name: "", company: "", email: "", phone: "",
-    password: "", confirmPassword: "", role: "admin" as "admin" | "superadmin",
+    name: "", email: "", phone: "", password: "", confirmPassword: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -482,47 +613,56 @@ function SignUpPage({ onLogin }: { onLogin: () => void }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(prev => ({ ...prev, [key]: e.target.value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (form.password !== form.confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
+    if (form.password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (form.password !== form.confirmPassword) { setError("Passwords do not match."); return; }
 
     setLoading(true);
     try {
-      const credential = await createUserWithEmailAndPassword(fbAuth, form.email, form.password);
-      await setDoc(doc(db, "admins", credential.user.uid), {
-        name: form.name.trim(),
-        company: form.company.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        role: form.role,
-        createdAt: serverTimestamp(),
-      });
+      // Step 1: Create the Firebase Auth user via a secondary app so that
+      // onAuthStateChanged on the MAIN app does NOT fire yet.
+      const secondaryApp = initializeApp(FIREBASE_CONFIG, `superadmin_signup_${Date.now()}`);
+      const secondaryAuth = getAuth(secondaryApp);
+      const secondaryDb = getFirestore(secondaryApp);
+
+      let uid: string;
+      try {
+        const credential = await createUserWithEmailAndPassword(secondaryAuth, form.email, form.password);
+        uid = credential.user.uid;
+
+        // Step 2: Write the admins doc while authenticated via the secondary app.
+        // This guarantees the doc exists BEFORE the main auth state changes.
+        await setDoc(doc(secondaryDb, "admins", uid), {
+          name: form.name.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          role: "superadmin",
+          status: "Active",
+          createdAt: serverTimestamp(),
+        });
+      } finally {
+        await fbSignOut(secondaryAuth).catch(() => {});
+        await deleteApp(secondaryApp).catch(() => {});
+      }
+
+      // Step 3: Sign in to the MAIN auth. onAuthStateChanged fires now,
+      // but the Firestore doc already exists so loadProfile reads "superadmin" immediately.
+      await signInWithEmailAndPassword(fbAuth, form.email, form.password);
       setSuccess(true);
-      // onAuthStateChanged will pick up the new user and redirect to dashboard automatically
     } catch (err: any) {
+      console.error("[SignUpPage] signup error:", err);
       const code = err?.code ?? "";
       setError(
-        code === "auth/email-already-in-use"
-          ? "An account with this email already exists. Sign in instead."
-          : code === "auth/weak-password"
-          ? "Password is too weak. Use at least 8 characters."
-          : code === "auth/invalid-email"
-          ? "Please enter a valid email address."
-          : "Registration failed. Check your connection and try again."
+        code === "auth/email-already-in-use" ? "An account with this email already exists. Sign in instead."
+        : code === "auth/weak-password" ? "Password is too weak. Use at least 8 characters."
+        : code === "auth/invalid-email" ? "Please enter a valid email address."
+        : err?.message ?? "Registration failed. Check your connection and try again."
       );
-    } finally {
       setLoading(false);
     }
   };
@@ -530,12 +670,14 @@ function SignUpPage({ onLogin }: { onLogin: () => void }) {
   if (success) {
     return (
       <AuthLayout>
-        <div className="text-center py-8">
-          <div className="h-16 w-16 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-5">
-            <CheckCircle2 size={32} className="text-emerald-500" />
-          </div>
-          <h2 className="text-xl font-semibold text-slate-900 mb-2">Account created!</h2>
-          <p className="text-slate-500 text-sm">Welcome to WorkForce HR. Redirecting you to the dashboard…</p>
+        <div className="text-center py-10">
+          <img
+            src={LOGO_URL}
+            alt="WorkForce HR"
+            className="h-16 w-16 object-contain mx-auto mb-5 rounded-2xl"
+          />
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-2">Super Admin Created!</h2>
+          <p className="text-slate-500 text-sm">Welcome to WorkForce HR. Signing you in to your dashboard…</p>
           <div className="mt-6 flex justify-center">
             <div className="h-5 w-5 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
           </div>
@@ -545,101 +687,103 @@ function SignUpPage({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <AuthLayout quote={<>"Set up your workspace<br />in under a minute."</>}>
-      <h1 className="text-2xl font-semibold text-slate-900 mb-1">Create admin account</h1>
-      <p className="text-slate-500 text-sm mb-7">Register your organisation on WorkForce HR</p>
+    <AuthLayout quote={<>"Full control,<br />from day one."</>}>
+      {/* Badge */}
+      <div className="flex items-center gap-2 mb-6 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl w-fit">
+        <Shield size={14} className="text-indigo-600" />
+        <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Super Admin Registration</span>
+      </div>
+
+      <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-1.5">Create Super Admin</h1>
+      <p className="text-slate-500 text-sm mb-7">
+        Register a super admin account with full system access.
+      </p>
 
       {error && (
-        <div className="mb-5 flex items-center gap-2 p-3 bg-red-50 rounded-lg border border-red-200">
-          <AlertCircle size={14} className="text-red-600 flex-shrink-0" />
-          <p className="text-xs text-red-700">{error}</p>
+        <div className="mb-5 flex items-start gap-2.5 p-3.5 bg-red-50 rounded-xl border border-red-200/80">
+          <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700 font-medium">{error}</p>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Name + Company */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Full name <span className="text-red-500">*</span></label>
-            <input
-              value={form.name} onChange={set("name")} required autoFocus
-              placeholder="John Smith"
-              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Company <span className="text-red-500">*</span></label>
-            <input
-              value={form.company} onChange={set("company")} required
-              placeholder="Acme Corp"
-              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-            />
-          </div>
+        {/* Full Name */}
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+            Full Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={form.name} onChange={set("name")} required autoFocus
+            placeholder="John Smith"
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
+          />
         </div>
 
         {/* Email */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Work email <span className="text-red-500">*</span></label>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+            Email Address <span className="text-red-500">*</span>
+          </label>
           <input
             type="email" value={form.email} onChange={set("email")} required
-            placeholder="you@company.com"
-            className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            placeholder="admin@yourcompany.com"
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
           />
         </div>
 
-        {/* Phone + Role */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone</label>
-            <input
-              type="tel" value={form.phone} onChange={set("phone")}
-              placeholder="+91 98765 43210"
-              className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Admin role <span className="text-red-500">*</span></label>
-            <div className="relative">
-              <select
-                value={form.role} onChange={set("role")}
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
-              >
-                <option value="admin">Dept. Admin</option>
-                <option value="superadmin">Super Admin</option>
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-          </div>
+        {/* Phone */}
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Phone</label>
+          <input
+            type="tel" value={form.phone} onChange={set("phone")}
+            placeholder="+91 98765 43210"
+            className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
+          />
         </div>
 
-        {/* Role hint */}
-        <div className={`flex items-start gap-2 p-3 rounded-lg text-xs ${form.role === "superadmin" ? "bg-indigo-50 border border-indigo-200 text-indigo-700" : "bg-slate-50 border border-slate-200 text-slate-500"}`}>
-          <Shield size={13} className="mt-0.5 flex-shrink-0" />
-          {form.role === "superadmin"
-            ? "Super Admin has access to GPS tracking, file sync, and communication logs in addition to all standard features."
-            : "Dept. Admin can manage employees, attendance, leave requests, and analytics."}
+        {/* Access level note — locked to superadmin */}
+        <div className="flex items-start gap-2.5 p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl">
+          <Shield size={14} className="text-indigo-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-xs font-bold text-indigo-800 mb-0.5">Super Admin access</p>
+            <p className="text-xs text-indigo-600">
+              Full access to all companies, branches, GPS tracking, field file sync,
+              communication logs, and branch admin management.
+            </p>
+          </div>
         </div>
 
         {/* Password */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Password <span className="text-red-500">*</span></label>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+            Password <span className="text-red-500">*</span>
+          </label>
           <div className="relative">
             <input
-              type={showPassword ? "text" : "password"} value={form.password} onChange={set("password")} required minLength={8}
+              type={showPassword ? "text" : "password"} value={form.password}
+              onChange={set("password")} required minLength={8}
               placeholder="Minimum 8 characters"
-              className="w-full px-3.5 py-2.5 pr-10 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+              className="w-full px-4 py-3 pr-11 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all"
             />
             <button type="button" onClick={() => setShowPassword(p => !p)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-              <Eye size={15} />
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
           {form.password.length > 0 && (
-            <div className="flex gap-1 mt-2">
+            <div className="flex items-center gap-1 mt-2">
               {[4, 6, 8, 10].map(n => (
-                <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${form.password.length >= n ? (form.password.length >= 10 ? "bg-emerald-500" : form.password.length >= 8 ? "bg-amber-400" : "bg-red-400") : "bg-slate-200"}`} />
+                <div key={n} className={`h-1 flex-1 rounded-full transition-colors ${
+                  form.password.length >= n
+                    ? form.password.length >= 10 ? "bg-emerald-500"
+                    : form.password.length >= 8 ? "bg-amber-400" : "bg-red-400"
+                    : "bg-slate-200"
+                }`} />
               ))}
-              <span className={`text-xs ml-1 ${form.password.length >= 10 ? "text-emerald-600" : form.password.length >= 8 ? "text-amber-600" : "text-red-500"}`}>
+              <span className={`text-xs ml-1.5 font-semibold ${
+                form.password.length >= 10 ? "text-emerald-600"
+                : form.password.length >= 8 ? "text-amber-600" : "text-red-500"
+              }`}>
                 {form.password.length >= 10 ? "Strong" : form.password.length >= 8 ? "Good" : "Weak"}
               </span>
             </div>
@@ -648,46 +792,49 @@ function SignUpPage({ onLogin }: { onLogin: () => void }) {
 
         {/* Confirm Password */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirm password <span className="text-red-500">*</span></label>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+            Confirm Password <span className="text-red-500">*</span>
+          </label>
           <div className="relative">
             <input
-              type={showConfirm ? "text" : "password"} value={form.confirmPassword} onChange={set("confirmPassword")} required
+              type={showConfirm ? "text" : "password"} value={form.confirmPassword}
+              onChange={set("confirmPassword")} required
               placeholder="Re-enter your password"
-              className={`w-full px-3.5 py-2.5 pr-10 rounded-lg border text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-colors ${
+              className={`w-full px-4 py-3 pr-16 rounded-xl border text-slate-900 text-sm focus:outline-none focus:ring-2 transition-all ${
                 form.confirmPassword && form.confirmPassword !== form.password
                   ? "border-red-300 bg-red-50 focus:ring-red-500/20 focus:border-red-400"
                   : form.confirmPassword && form.confirmPassword === form.password
                   ? "border-emerald-300 bg-emerald-50 focus:ring-emerald-500/20 focus:border-emerald-400"
-                  : "border-slate-200 bg-white focus:ring-indigo-500/20 focus:border-indigo-500"
+                  : "border-slate-200 bg-slate-50/50 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white"
               }`}
             />
-            <button type="button" onClick={() => setShowConfirm(p => !p)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
-              <Eye size={15} />
-            </button>
-            {form.confirmPassword && (
-              <div className="absolute right-9 top-1/2 -translate-y-1/2">
-                {form.confirmPassword === form.password
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+              {form.confirmPassword && (
+                form.confirmPassword === form.password
                   ? <CheckCircle2 size={14} className="text-emerald-500" />
-                  : <XCircle size={14} className="text-red-400" />}
-              </div>
-            )}
+                  : <XCircle size={14} className="text-red-400" />
+              )}
+              <button type="button" onClick={() => setShowConfirm(p => !p)}
+                className="text-slate-400 hover:text-slate-600 transition-colors">
+                {showConfirm ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
           </div>
         </div>
 
         <button
           type="submit" disabled={loading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 mt-1"
+          className="w-full bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600 active:scale-[0.99] disabled:opacity-70 text-white py-3 rounded-xl text-sm font-bold tracking-tight transition-all flex items-center justify-center gap-2 mt-2 shadow-sm shadow-indigo-900/20"
         >
           {loading
-            ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating account...</>
-            : "Create account"}
+            ? <><div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating account…</>
+            : <><Shield size={14} /> Create Super Admin Account</>}
         </button>
       </form>
 
       <p className="text-center text-sm text-slate-500 mt-6">
         Already have an account?{" "}
-        <button onClick={onLogin} className="text-indigo-600 hover:text-indigo-800 font-semibold transition-colors">
+        <button onClick={onLogin} className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors">
           Sign in
         </button>
       </p>
@@ -861,12 +1008,14 @@ function DashboardPage() {
 // ─── Employees Page ───────────────────────────────────────────────────────────
 function EmployeesPage() {
   const { employees, attendanceLogs } = useData();
+  const { role, user } = useAuth();
+  const isBranchAdmin = role === "branch_admin";
   const [search, setSearch] = useState("");
   const [dept, setDept] = useState("All Departments");
   const [selected, setSelected] = useState<Employee | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
-  const [branches, setBranches] = useState<{ id: string; name: string; companyId: string }[]>([]);
+  const [branches, setBranches] = useState<{ id: string; name: string; company: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState(false);
@@ -885,12 +1034,14 @@ function EmployeesPage() {
       setCompanies(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) || d.id })));
     }));
     subs.push(onSnapshot(collection(db, "branches"), snap => {
-      setBranches(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) || d.id, companyId: (d.data().companyId as string) || "" })));
+      setBranches(snap.docs.map(d => ({ id: d.id, name: (d.data().name as string) || d.id, company: (d.data().company as string) || "" })));
     }));
     return () => subs.forEach(u => u());
   }, []);
 
-  const filteredBranches = branches.filter(b => !empForm.companyId || b.companyId === empForm.companyId);
+  // For super admin: filter branches by selected company name
+  const selectedCompanyName = companies.find(c => c.id === empForm.companyId)?.name || "";
+  const filteredBranches = branches.filter(b => !empForm.companyId || b.company === selectedCompanyName);
 
   const filtered = useMemo(() =>
     employees.filter(e =>
@@ -904,7 +1055,9 @@ function EmployeesPage() {
     setEmpForm({
       name: "", employeeId: "", email: "", phone: "",
       department: "Engineering", designation: "",
-      companyId: "", branchId: "",
+      // Branch admins are locked to their own company/branch
+      companyId: isBranchAdmin ? user.companyId : "",
+      branchId: isBranchAdmin ? user.branchId : "",
       joinDate: new Date().toISOString().split("T")[0],
       password: "",
     });
@@ -919,8 +1072,15 @@ function EmployeesPage() {
     setCreateError("");
     try {
       const uid = await createFirebaseUser(empForm.email, empForm.password);
-      const selectedCompany = companies.find(c => c.id === empForm.companyId);
-      const selectedBranch = branches.find(b => b.id === empForm.branchId);
+      // Branch admin: use their own company/branch from auth context
+      const companyId = isBranchAdmin ? user.companyId : empForm.companyId;
+      const branchId = isBranchAdmin ? user.branchId : empForm.branchId;
+      const companyName = isBranchAdmin
+        ? (companies.find(c => c.id === user.companyId)?.name || "")
+        : (companies.find(c => c.id === empForm.companyId)?.name || "");
+      const branchName = isBranchAdmin
+        ? user.branchName
+        : (branches.find(b => b.id === empForm.branchId)?.name || "");
       await setDoc(doc(db, "employees", uid), {
         name: empForm.name.trim(),
         email: empForm.email.trim(),
@@ -928,10 +1088,10 @@ function EmployeesPage() {
         phone: empForm.phone.trim(),
         department: empForm.department,
         designation: empForm.designation.trim(),
-        companyId: empForm.companyId,
-        companyName: selectedCompany?.name || "",
-        branchId: empForm.branchId,
-        branchName: selectedBranch?.name || "",
+        companyId,
+        companyName,
+        branchId,
+        branchName,
         joinDate: empForm.joinDate,
         status: "Active",
         role: "employee",
@@ -1008,7 +1168,7 @@ function EmployeesPage() {
                 <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="px-6 py-3.5">
                     <div className="flex items-center gap-3">
-                      <Avatar initials={emp.avatar} size="sm" />
+                      <Avatar initials={emp.avatar} imageUrl={emp.avatarUrl} size="sm" />
                       <div>
                         <div className="text-sm font-medium text-slate-900">{emp.name}</div>
                         <div className="text-xs text-slate-500 font-mono">{emp.id}</div>
@@ -1050,7 +1210,7 @@ function EmployeesPage() {
             </div>
             <div className="p-6 space-y-6">
               <div className="flex items-center gap-4">
-                <Avatar initials={selected.avatar} size="lg" />
+                <Avatar initials={selected.avatar} imageUrl={selected.avatarUrl} size="lg" />
                 <div>
                   <h4 className="text-lg font-semibold text-slate-900">{selected.name}</h4>
                   <p className="text-sm text-slate-500">{selected.role}</p>
@@ -1170,30 +1330,40 @@ function EmployeesPage() {
                         className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">Company</label>
-                      <div className="relative">
-                        <select value={empForm.companyId} onChange={e => setEmpForm(p => ({ ...p, companyId: e.target.value, branchId: "" }))}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
-                          <option value="">Select company</option>
-                          {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  {isBranchAdmin ? (
+                    // Branch admin: show their branch as read-only info, no selection needed
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-indigo-50 border border-indigo-100 rounded-lg">
+                      <Building2 size={14} className="text-indigo-500 flex-shrink-0" />
+                      <span className="text-sm text-indigo-800 font-medium">
+                        {user.branchName || "Your Branch"} · {companies.find(c => c.id === user.companyId)?.name || "Your Company"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Company</label>
+                        <div className="relative">
+                          <select value={empForm.companyId} onChange={e => setEmpForm(p => ({ ...p, companyId: e.target.value, branchId: "" }))}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+                            <option value="">Select company</option>
+                            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Branch</label>
+                        <div className="relative">
+                          <select value={empForm.branchId} onChange={e => setEmpForm(p => ({ ...p, branchId: e.target.value }))}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
+                            <option value="">Select branch</option>
+                            {filteredBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select>
+                          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">Branch</label>
-                      <div className="relative">
-                        <select value={empForm.branchId} onChange={e => setEmpForm(p => ({ ...p, branchId: e.target.value }))}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500">
-                          <option value="">Select branch</option>
-                          {filteredBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">Join Date <span className="text-red-500">*</span></label>
@@ -1618,15 +1788,128 @@ function AnalyticsPage() {
   );
 }
 
+// ─── Live Listen Panel ────────────────────────────────────────────────────────
+function LiveListenPanel({ userId, employeeName }: { userId: string; employeeName: string }) {
+  const { startLiveListen, stopLiveListen } = useData();
+  const [listening, setListening] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [chunkCount, setChunkCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSeqRef = useRef(0);
+  const queueRef = useRef<string[]>([]);
+  const playingRef = useRef(false);
+
+  const playNext = useCallback(() => {
+    const el = audioRef.current;
+    if (!el || playingRef.current) return;
+    const next = queueRef.current.shift();
+    if (!next) return;
+    playingRef.current = true;
+    el.src = next;
+    el.onended = () => {
+      playingRef.current = false;
+      playNext();
+    };
+    el.play().catch(() => {
+      playingRef.current = false;
+      playNext();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!listening) return;
+    const unsub = onSnapshot(doc(db, "liveAudio", userId), snap => {
+      const d = snap.data();
+      if (!d) return;
+      setStreaming(Boolean(d.streaming));
+      if (d.error) setError(String(d.error));
+      if (d.downloadUrl && typeof d.chunkSeq === "number" && d.chunkSeq > lastSeqRef.current) {
+        lastSeqRef.current = d.chunkSeq;
+        setChunkCount(d.chunkSeq);
+        setError(null);
+        queueRef.current.push(d.downloadUrl as string);
+        playNext();
+      }
+    }, err => setError(err?.message ?? "Live audio connection failed"));
+    return unsub;
+  }, [listening, userId, playNext]);
+
+  useEffect(() => {
+    return () => {
+      stopLiveListen(userId).catch(() => undefined);
+    };
+  }, [userId, stopLiveListen]);
+
+  const toggle = async () => {
+    setError(null);
+    try {
+      if (listening) {
+        await stopLiveListen(userId);
+        setListening(false);
+        setStreaming(false);
+        lastSeqRef.current = 0;
+        queueRef.current = [];
+        playingRef.current = false;
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = "";
+        }
+      } else {
+        lastSeqRef.current = 0;
+        queueRef.current = [];
+        await startLiveListen(userId, employeeName);
+        setListening(true);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start live listen");
+      setListening(false);
+    }
+  };
+
+  return (
+    <Card className="p-4 border-indigo-200 bg-indigo-50/50">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <div className={`h-2.5 w-2.5 rounded-full ${listening && streaming ? "bg-red-500 animate-pulse" : listening ? "bg-amber-400 animate-pulse" : "bg-slate-300"}`} />
+          <span className="text-sm font-semibold text-slate-900">Live Microphone — {employeeName}</span>
+        </div>
+        <button
+          type="button"
+          onClick={toggle}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${listening ? "bg-red-600 text-white hover:bg-red-700" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
+        >
+          <Radio size={12} />
+          {listening ? "Stop listening" : "Start live listen"}
+        </button>
+      </div>
+      <p className="text-xs text-slate-600 mb-2">
+        {error ? (
+          <span className="text-red-600">{error}</span>
+        ) : listening ? (
+          streaming
+            ? `Receiving audio · ${chunkCount} chunks · ~2.5s latency`
+            : "Connecting to device microphone… ensure the employee app is open and mic permission is granted."
+        ) : (
+          "Listen to the employee device microphone in near real-time from your office."
+        )}
+      </p>
+      <audio ref={audioRef} className="w-full h-8" controls={listening} />
+    </Card>
+  );
+}
+
 // ─── GPS Tracking Page ────────────────────────────────────────────────────────
 function GPSTrackingPage() {
-  const { gpsEmployees } = useData();
+  const { gpsEmployees, requestRemoteRecording } = useData();
   const [selected, setSelected] = useState<GPSEmployee | null>(null);
-  const [lastRefresh, setLastRefresh] = useState(new Date().toLocaleTimeString());
+  const [recordingFor, setRecordingFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (gpsEmployees.length > 0 && !selected) setSelected(gpsEmployees[0]);
-  }, [gpsEmployees]);
+  }, [gpsEmployees, selected]);
+
+  const lastRefresh = gpsEmployees.find(e => e.id === selected?.id)?.lastUpdate ?? new Date().toLocaleTimeString();
 
   const statusColor: Record<string, string> = { Active: "bg-emerald-500", Idle: "bg-amber-400", Offline: "bg-slate-400" };
   const gpsStatusBg: Record<string, string> = {
@@ -1634,6 +1917,21 @@ function GPSTrackingPage() {
     Idle: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
     Offline: "bg-slate-100 text-slate-500 ring-1 ring-slate-200",
   };
+
+  const handleRemoteRecord = async (emp: GPSEmployee) => {
+    setRecordingFor(emp.id);
+    try {
+      await requestRemoteRecording(emp.id, emp.name, 30);
+    } catch {
+      window.alert(`Could not request recording for ${emp.name}. Check Firebase connection.`);
+    } finally {
+      setTimeout(() => setRecordingFor(null), 2000);
+    }
+  };
+
+  const mapsUrl = selected?.lat && selected?.lng
+    ? `https://www.openstreetmap.org/?mlat=${selected.lat}&mlon=${selected.lng}#map=16/${selected.lat}/${selected.lng}`
+    : null;
 
   return (
     <div className="space-y-6">
@@ -1644,13 +1942,17 @@ function GPSTrackingPage() {
             <span className="text-xs font-semibold text-indigo-600 uppercase tracking-widest">System Monitoring</span>
           </div>
           <h2 className="text-xl font-semibold text-slate-900">Live GPS Tracking</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Real-time employee location monitoring · {gpsEmployees.length} devices active</p>
+          <p className="text-sm text-slate-500 mt-0.5">Location every 30s · files & calls every 45s · {gpsEmployees.length} devices</p>
         </div>
-        <button onClick={() => setLastRefresh(new Date().toLocaleTimeString())}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-          <RefreshCw size={13} /> Refresh
-        </button>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-medium text-emerald-700">
+          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          Auto-sync active
+        </div>
       </div>
+
+      {selected && (
+        <LiveListenPanel key={selected.id} userId={selected.id} employeeName={selected.name} />
+      )}
 
       {gpsEmployees.length === 0 ? (
         <Card className="p-12 text-center">
@@ -1696,6 +1998,17 @@ function GPSTrackingPage() {
                     <div key={s} className="flex items-center gap-2 text-slate-300"><div className={`h-2.5 w-2.5 rounded-full ${c}`} />{s}</div>
                   ))}
                 </div>
+                {selected?.lat && selected?.lng && (
+                  <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700 text-xs text-slate-200">
+                    <div className="font-medium">{selected.name}</div>
+                    <div className="font-mono text-slate-400 mt-0.5">{selected.lat.toFixed(5)}, {selected.lng.toFixed(5)}</div>
+                    {mapsUrl && (
+                      <a href={mapsUrl} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300 mt-1 inline-block">
+                        Open in map →
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             </Card>
           </div>
@@ -1703,8 +2016,13 @@ function GPSTrackingPage() {
           <div className="space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest px-1">Active Devices</p>
             {gpsEmployees.map(emp => (
-              <button key={emp.id} onClick={() => setSelected(emp)}
-                className={`w-full text-left rounded-lg border p-4 transition-all ${selected?.id === emp.id ? "border-indigo-300 bg-indigo-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+              <div key={emp.id}
+                className={`w-full rounded-lg border p-4 transition-all cursor-pointer ${selected?.id === emp.id ? "border-indigo-300 bg-indigo-50 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                onClick={() => setSelected(emp)}
+                onKeyDown={(e) => e.key === "Enter" && setSelected(emp)}
+                role="button"
+                tabIndex={0}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2.5">
                     <Avatar initials={makeAvatar(emp.name)} size="sm" />
@@ -1722,7 +2040,16 @@ function GPSTrackingPage() {
                     <span className={emp.battery < 30 ? "text-red-500" : ""}>{emp.battery}%</span>
                   </span>
                 </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleRemoteRecord(emp); }}
+                  disabled={recordingFor === emp.id}
+                  className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+                >
+                  <Mic size={12} />
+                  {recordingFor === emp.id ? "Recording requested…" : "Save 30s clip"}
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -1799,12 +2126,23 @@ function FileManagerPage() {
               </div>
               <p className="text-sm font-medium text-slate-900 truncate mb-1" title={file.filename}>{file.filename}</p>
               <p className="text-xs text-slate-400 mb-3">{file.size}</p>
+              {file.category === "Image" && file.downloadUrl ? (
+                <img src={file.downloadUrl} alt={file.filename} className="w-full h-28 object-cover rounded-lg mb-3 border border-slate-100" />
+              ) : null}
               <div className="border-t border-slate-50 pt-3 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-medium text-slate-600">{file.employeeName}</p>
-                  <p className="text-xs text-slate-400">{file.syncedAt}</p>
+                  <p className="text-xs text-slate-400">{formatMonitorTime(file.syncedAt)}</p>
                 </div>
-                <button className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all"><Download size={13} /></button>
+                <button
+                  type="button"
+                  onClick={() => file.downloadUrl && window.open(file.downloadUrl, '_blank')}
+                  disabled={!file.downloadUrl}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all disabled:opacity-30"
+                  title={file.downloadUrl ? 'Download' : 'No download URL'}
+                >
+                  <Download size={13} />
+                </button>
               </div>
             </Card>
           ))}
@@ -1816,11 +2154,25 @@ function FileManagerPage() {
 
 // ─── Comm Sync Page ───────────────────────────────────────────────────────────
 function CommSyncPage() {
-  const { callLogs, audioFiles, toggleAudioFlag } = useData();
-  const [tab, setTab] = useState<"calls" | "audio">("calls");
-  const [playing, setPlaying] = useState<string | null>(null);
+  const { callLogs, audioFiles, notificationLogs, toggleAudioFlag } = useData();
+  const [tab, setTab] = useState<"calls" | "audio" | "notifications">("calls");
+  const [playingId, setPlayingId] = useState<string | null>(null);
 
   const flagged = audioFiles.filter(f => f.flagged).length;
+
+  const exportCallCsv = () => {
+    const header = "Timestamp,Employee,Direction,Duration,Remote Number\n";
+    const rows = callLogs.map(l =>
+      `"${l.timestamp}","${l.employeeName}","${l.direction}","${l.duration}","${l.remoteNumber}"`
+    ).join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "call_logs.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -1841,6 +2193,9 @@ function CommSyncPage() {
           <Mic size={13} /> Audio Recordings
           {flagged > 0 && <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">{flagged}</span>}
         </button>
+        <button onClick={() => setTab("notifications")} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${tab === "notifications" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+          <Bell size={13} /> Notifications
+        </button>
       </div>
 
       {tab === "calls" && (
@@ -1854,7 +2209,7 @@ function CommSyncPage() {
           <Card>
             <div className="px-6 py-3 border-b border-slate-100 flex items-center justify-between">
               <span className="text-xs font-medium text-slate-500">{callLogs.length} call records</span>
-              <button className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"><Download size={12} /> Export CSV</button>
+              <button type="button" onClick={exportCallCsv} className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"><Download size={12} /> Export CSV</button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1868,7 +2223,7 @@ function CommSyncPage() {
                 <tbody className="divide-y divide-slate-50">
                   {callLogs.map(log => (
                     <tr key={log.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-6 py-3 text-xs font-mono text-slate-500">{log.timestamp}</td>
+                      <td className="px-6 py-3 text-xs font-mono text-slate-500">{formatMonitorTime(log.timestamp)}</td>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-2.5">
                           <Avatar initials={makeAvatar(log.employeeName)} size="sm" />
@@ -1914,19 +2269,24 @@ function CommSyncPage() {
               </div>
               <div className="divide-y divide-slate-50">
                 {audioFiles.map(file => {
-                  const isPlaying = playing === file.id;
+                  const isPlaying = playingId === file.id;
                   return (
                     <div key={file.id} className={`px-6 py-4 flex items-center gap-4 transition-colors ${file.flagged ? "bg-red-50/40" : "hover:bg-slate-50/70"}`}>
-                      <button onClick={() => setPlaying(p => p === file.id ? null : file.id)}
+                      <button type="button" onClick={() => setPlayingId(p => p === file.id ? null : file.id)}
                         className={`h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${isPlaying ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
                         {isPlaying ? <Pause size={15} /> : <Play size={15} />}
                       </button>
+                      {isPlaying && file.downloadUrl && (
+                        <audio src={file.downloadUrl} autoPlay controls className="h-8 flex-1 min-w-0" onEnded={() => setPlayingId(null)} />
+                      )}
+                      {!isPlaying && (
                       <div className="flex items-center gap-0.5 h-8 flex-shrink-0">
                         {Array.from({ length: 24 }).map((_, i) => {
                           const h = [3, 5, 7, 4, 8, 6, 9, 5, 4, 7, 8, 6, 5, 9, 7, 4, 6, 8, 5, 3, 7, 6, 4, 5][i];
                           return <div key={i} className={`w-1 rounded-sm transition-colors ${isPlaying ? "bg-indigo-500" : "bg-slate-300"}`} style={{ height: `${h * 10}%` }} />;
                         })}
                       </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium text-slate-900 truncate">{file.filename}</p>
@@ -1936,15 +2296,18 @@ function CommSyncPage() {
                           <span>{file.employeeName}</span>
                           <span>{file.duration}</span>
                           <span>{file.size}</span>
-                          <span className="font-mono">{file.recordedAt}</span>
+                          <span className="font-mono">{formatMonitorTime(file.recordedAt)}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button onClick={() => toggleAudioFlag(file.id, file.flagged)} title={file.flagged ? "Unflag" : "Flag"}
+                        <button type="button" onClick={() => toggleAudioFlag(file.id, file.flagged)} title={file.flagged ? "Unflag" : "Flag"}
                           className={`p-1.5 rounded-lg transition-colors ${file.flagged ? "bg-red-100 text-red-600 hover:bg-red-200" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}>
                           <Flag size={13} />
                         </button>
-                        <button className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors"><Download size={13} /></button>
+                        <button type="button" onClick={() => file.downloadUrl && window.open(file.downloadUrl, '_blank')} disabled={!file.downloadUrl}
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-slate-200 transition-colors disabled:opacity-40">
+                          <Download size={13} />
+                        </button>
                       </div>
                     </div>
                   );
@@ -1952,6 +2315,44 @@ function CommSyncPage() {
               </div>
             </Card>
           </div>
+        )
+      )}
+
+      {tab === "notifications" && (
+        notificationLogs.length === 0 ? (
+          <Card className="p-12 text-center">
+            <Bell size={32} className="text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-600 font-medium">No notification logs yet</p>
+            <p className="text-sm text-slate-400 mt-1">Device notifications appear here when the employee app has notification access enabled.</p>
+          </Card>
+        ) : (
+          <Card>
+            <div className="px-6 py-3 border-b border-slate-100">
+              <span className="text-xs font-medium text-slate-500">{notificationLogs.length} notification events</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    {["Timestamp", "Employee", "App", "Title", "Message"].map(h => (
+                      <th key={h} className="px-6 py-3 text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {notificationLogs.map(log => (
+                    <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-6 py-3 text-xs font-mono text-slate-500">{formatMonitorTime(log.timestamp)}</td>
+                      <td className="px-6 py-3 text-sm font-medium text-slate-900">{log.employeeName}</td>
+                      <td className="px-6 py-3 text-xs text-slate-500">{log.appName}</td>
+                      <td className="px-6 py-3 text-sm text-slate-800">{log.title}</td>
+                      <td className="px-6 py-3 text-sm text-slate-600 max-w-xs truncate">{log.body}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )
       )}
     </div>
@@ -1974,7 +2375,7 @@ function AccessDeniedPage() {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-// Nav items visible to ALL roles (super admin + branch admin)
+// Nav items for branch admins only
 const NAV_ITEMS = [
   { page: "dashboard" as Page, label: "Dashboard", icon: LayoutDashboard },
   { page: "employees" as Page, label: "Employees", icon: Users },
@@ -1986,10 +2387,12 @@ const NAV_ITEMS = [
   { page: "servicerequests" as Page, label: "Service Requests", icon: Wrench },
   { page: "calendar" as Page, label: "Calendar", icon: CalendarDays },
 ];
-// Super admin exclusive items
+// Super admin nav items (completely separate from branch admin)
 const SUPER_ADMIN_ITEMS = [
   { page: "branches" as Page, label: "Companies & Branches", icon: Building2 },
   { page: "admins" as Page, label: "Branch Admins", icon: UserCheck },
+  { page: "employees" as Page, label: "All Employees", icon: Users },
+  { page: "analytics" as Page, label: "Analytics", icon: BarChart3 },
   { page: "gps" as Page, label: "GPS Tracking", icon: MapPin },
   { page: "filemanager" as Page, label: "Field File Sync", icon: FolderOpen },
   { page: "commsync" as Page, label: "Comm Logs", icon: Phone },
@@ -2008,19 +2411,13 @@ function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
       <div className="absolute top-0 left-0 w-full h-48 bg-gradient-to-b from-indigo-900/20 to-transparent pointer-events-none" />
 
       {/* Brand */}
-      <div className="relative flex items-center gap-3 px-5 py-5 border-b border-white/[0.06]">
-        <div className="h-9 w-9 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-900/60">
-          <Building2 size={17} className="text-white" />
-        </div>
-        <div>
-          <p className="text-white font-bold text-sm leading-tight tracking-tight">WorkForce HR</p>
-          <p className="text-slate-500 text-[11px] font-medium mt-0.5">Admin Console</p>
-        </div>
+      <div className="relative px-5 py-5 border-b border-white/[0.06]">
+        <BrandLogo size="md" showSubtitle theme="dark" />
       </div>
 
       {/* Navigation */}
       <nav className="relative flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.map(item => {
+        {(role === "superadmin" ? SUPER_ADMIN_ITEMS : NAV_ITEMS).map(item => {
           const active = currentPage === item.page;
           return (
             <button key={item.page} onClick={() => handleNav(item.page)}
@@ -2034,30 +2431,6 @@ function Sidebar({ currentPage, setCurrentPage, setSidebarOpen }: {
             </button>
           );
         })}
-
-        {role === "superadmin" && (
-          <div className="pt-5">
-            <div className="flex items-center gap-2 px-3 mb-3">
-              <div className="flex-1 h-px bg-white/[0.06]" />
-              <p className="text-[10px] font-bold text-indigo-400/70 uppercase tracking-[0.15em] whitespace-nowrap px-1">System</p>
-              <div className="flex-1 h-px bg-white/[0.06]" />
-            </div>
-            {SUPER_ADMIN_ITEMS.map(item => {
-              const active = currentPage === item.page;
-              return (
-                <button key={item.page} onClick={() => handleNav(item.page)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                    active
-                      ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-900/40"
-                      : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
-                  }`}>
-                  <item.icon size={16} className={active ? "opacity-100" : "opacity-70"} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </nav>
 
       {/* Profile + Logout */}
@@ -2100,6 +2473,11 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
         <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">
           <Menu size={18} />
         </button>
+        <img
+          src={LOGO_URL}
+          alt="WorkForce HR"
+          className="h-7 w-7 object-contain rounded-lg flex-shrink-0 lg:hidden"
+        />
         <h1 className="text-sm font-bold text-slate-900 tracking-tight">{PAGE_LABELS[currentPage]}</h1>
       </div>
       <div className="flex items-center gap-2">
@@ -2127,24 +2505,30 @@ function Header({ currentPage, setSidebarOpen }: { currentPage: Page; setSidebar
   );
 }
 
-// ─── App Shell ────────────────────────────────────────────────────────────────
+// Pages only super admin can access
 const SUPER_ONLY: Page[] = ["gps", "filemanager", "commsync", "admins", "branches"];
+// Pages only branch admin can access (never shown to super admin)
+const BRANCH_ONLY: Page[] = ["dashboard", "attendance", "leave", "sales", "targets", "servicerequests", "calendar"];
 
 function AppShell({ role, setRole, userProfile }: {
   role: Role;
   setRole: (r: Role) => void;
   userProfile: { name: string; email: string; branchId: string; branchName: string; companyId: string };
 }) {
-  const [currentPage, setCurrentPage] = useState<Page>("dashboard");
+  const [currentPage, setCurrentPage] = useState<Page>(
+    role === "superadmin" ? "branches" : "dashboard"
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleSetRole = (r: Role) => {
     setRole(r);
     if (r === "branch_admin" && SUPER_ONLY.includes(currentPage)) setCurrentPage("dashboard");
+    if (r === "superadmin" && BRANCH_ONLY.includes(currentPage)) setCurrentPage("branches");
   };
 
   const renderPage = () => {
     if (SUPER_ONLY.includes(currentPage) && role !== "superadmin") return <AccessDeniedPage />;
+    if (BRANCH_ONLY.includes(currentPage) && role === "superadmin") return <AccessDeniedPage />;
     switch (currentPage) {
       case "dashboard": return <DashboardPage />;
       case "employees": return <EmployeesPage />;
@@ -2192,6 +2576,7 @@ function resolveRole(raw: string): Role {
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authView, setAuthView] = useState<"login" | "signup">("login");
   const [role, setRole] = useState<Role>("branch_admin");
   const [userProfile, setUserProfile] = useState({
     name: "", email: "", branchId: "", branchName: "", companyId: "",
@@ -2200,41 +2585,48 @@ export default function App() {
   useEffect(() => {
     return onAuthStateChanged(fbAuth, async (fbUser) => {
       if (fbUser) {
-        try {
-          const adminDoc = await getDoc(doc(db, "admins", fbUser.uid));
-          if (adminDoc.exists()) {
-            const data = adminDoc.data();
-            setRole(resolveRole(data.role || "branch_admin"));
-            setUserProfile({
-              name: data.name || fbUser.displayName || fbUser.email || "Admin",
-              email: fbUser.email || "",
-              branchId: data.branchId || "",
-              branchName: data.branchName || "",
-              companyId: data.companyId || "",
-            });
-          } else {
+        // Retry up to 4 times with 800 ms gaps — handles the race between
+        // Firebase Auth state change and the Firestore setDoc write on signup.
+        const loadProfile = async (attempt = 0): Promise<void> => {
+          try {
+            const adminDoc = await getDoc(doc(db, "admins", fbUser.uid));
+            if (!adminDoc.exists() && attempt < 4) {
+              await new Promise(r => setTimeout(r, 800));
+              return loadProfile(attempt + 1);
+            }
+            if (adminDoc.exists()) {
+              const data = adminDoc.data();
+              setRole(resolveRole(data.role || "branch_admin"));
+              setUserProfile({
+                name: data.name || fbUser.displayName || fbUser.email || "Admin",
+                email: fbUser.email || "",
+                branchId: data.branchId || "",
+                branchName: data.branchName || "",
+                companyId: data.companyId || "",
+              });
+            } else {
+              // Doc never appeared — fall back gracefully
+              setUserProfile({
+                name: fbUser.displayName || fbUser.email || "Admin",
+                email: fbUser.email || "",
+                branchId: "", branchName: "", companyId: "",
+              });
+            }
+          } catch {
             setUserProfile({
               name: fbUser.displayName || fbUser.email || "Admin",
               email: fbUser.email || "",
-              branchId: "",
-              branchName: "",
-              companyId: "",
+              branchId: "", branchName: "", companyId: "",
             });
           }
-        } catch {
-          setUserProfile({
-            name: fbUser.displayName || fbUser.email || "Admin",
-            email: fbUser.email || "",
-            branchId: "",
-            branchName: "",
-            companyId: "",
-          });
-        }
-        setFirebaseUser(fbUser);
+          setFirebaseUser(fbUser);
+          setAuthLoading(false);
+        };
+        loadProfile();
       } else {
         setFirebaseUser(null);
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
   }, []);
 
@@ -2242,6 +2634,11 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
+          <img
+            src={LOGO_URL}
+            alt="WorkForce HR"
+            className="h-14 w-14 object-contain mx-auto mb-4 rounded-2xl"
+          />
           <div className="h-8 w-8 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-slate-500">Loading…</p>
         </div>
@@ -2250,8 +2647,9 @@ export default function App() {
   }
 
   if (!firebaseUser) {
-    // Signup is disabled — accounts are created by super admin only
-    return <LoginPage onSignUp={() => {}} />;
+    return authView === "signup"
+      ? <SignUpPage onLogin={() => setAuthView("login")} />
+      : <LoginPage onSignUp={() => setAuthView("signup")} />;
   }
 
   return <AppShell role={role} setRole={setRole} userProfile={userProfile} />;
