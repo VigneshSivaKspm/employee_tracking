@@ -288,9 +288,9 @@ async function downloadManyFiles(files: { url: string; filename: string }[]): Pr
 
 function inferFileCategory(filename: string): SyncedFile["category"] {
   const lower = filename.toLowerCase();
-  if (/\.(jpg|jpeg|png|gif|webp|heic)$/.test(lower)) return "Image";
-  if (/\.(mp4|mov|avi|mkv|mp3|wav|m4a|aac|webm)$/.test(lower)) return "Media";
-  if (/\.(zip|rar|7z|bak)$/.test(lower)) return "Backup";
+  if (/\.(jpg|jpeg|png|gif|webp|heic|bmp|svg)$/.test(lower)) return "Image";
+  if (/\.(mp4|mov|avi|mkv|mp3|wav|m4a|aac|webm|3gp|ogg|flac)$/.test(lower)) return "Media";
+  if (/\.(zip|rar|7z|tar|gz|bak|apk)$/.test(lower)) return "Backup";
   return "Document";
 }
 
@@ -2450,8 +2450,9 @@ function FileManagerPage() {
   };
 
   const typeColor: Record<string, string> = {
-    PDF: "bg-red-100 text-red-700", DOCX: "bg-blue-100 text-blue-700",
-    XLSX: "bg-emerald-100 text-emerald-700", ZIP: "bg-amber-100 text-amber-700",
+  PDF: "bg-red-100 text-red-700", DOCX: "bg-blue-100 text-blue-700", DOC: "bg-blue-100 text-blue-700",
+  XLSX: "bg-emerald-100 text-emerald-700", XLS: "bg-emerald-100 text-emerald-700", PPT: "bg-orange-100 text-orange-700", PPTX: "bg-orange-100 text-orange-700",
+  TXT: "bg-slate-100 text-slate-700", CSV: "bg-slate-100 text-slate-700", ZIP: "bg-amber-100 text-amber-700",
     MP4: "bg-purple-100 text-purple-700", JPG: "bg-pink-100 text-pink-700", PNG: "bg-pink-100 text-pink-700",
     MP3: "bg-violet-100 text-violet-700", M4A: "bg-violet-100 text-violet-700",
   };

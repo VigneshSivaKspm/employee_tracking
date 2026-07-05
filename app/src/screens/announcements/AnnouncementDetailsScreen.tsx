@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { useTopInset, useNavBottomInset } from '../../hooks/useBottomSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types';
@@ -94,7 +94,8 @@ interface Props {
 }
 
 export default function AnnouncementDetailsScreen({ route }: Props) {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
+  const navBottom = useNavBottomInset();
   const navigation = useNavigation<Nav>();
   const { announcementId } = route.params;
   const item = ANNOUNCEMENTS[announcementId] ?? ANNOUNCEMENTS['1'];
@@ -107,7 +108,7 @@ export default function AnnouncementDetailsScreen({ route }: Props) {
       {/* Header */}
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -150,7 +151,7 @@ export default function AnnouncementDetailsScreen({ route }: Props) {
       </ScrollView>
 
       {/* Got It Button */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.footer, { paddingBottom: navBottom + 16 }]}>
         <TouchableOpacity style={styles.gotItBtn} onPress={() => navigation.goBack()} activeOpacity={0.85}>
           <Text style={styles.gotItBtnText}>Got It</Text>
         </TouchableOpacity>

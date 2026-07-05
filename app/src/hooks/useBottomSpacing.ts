@@ -1,9 +1,30 @@
-import { Platform } from 'react-native';
+import { Platform, StatusBar as RNStatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 /** Fallback when Android does not report navigation-bar inset (3-button nav). */
 const ANDROID_NAV_BAR_MIN = 48;
+
+/** Fallback when edge-to-edge Android reports zero top inset (status bar / cutout). */
+const ANDROID_STATUS_BAR_MIN = 28;
+
+function getAndroidStatusBarHeight(): number {
+  return RNStatusBar.currentHeight ?? ANDROID_STATUS_BAR_MIN;
+}
+
+/** Reliable top inset for headers (Android edge-to-edge often reports 0). */
+export function getTopInset(insetTop: number): number {
+  if (Platform.OS !== 'android') return insetTop;
+
+  const statusBar = getAndroidStatusBarHeight();
+  return Math.max(insetTop, statusBar);
+}
+
+/** Top safe-area padding plus optional extra spacing for screen headers. */
+export function useTopInset(extra = 0): number {
+  const { top } = useSafeAreaInsets();
+  return getTopInset(top) + extra;
+}
 
 export function getNavBottomInset(insetBottom: number): number {
   if (Platform.OS !== 'android') return insetBottom;

@@ -6,12 +6,12 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
   collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy,
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { useAuth } from '../../context/AuthContext';
 
 interface ServiceRequest {
@@ -45,7 +45,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: string }> 
 function genTicket() { return 'SR-' + Date.now().toString().slice(-6); }
 
 export default function ServiceRequestScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
   const navigation = useNavigation();
   const { user } = useAuth();
 
@@ -104,7 +104,7 @@ export default function ServiceRequestScreen() {
       <StatusBar style="light" />
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>

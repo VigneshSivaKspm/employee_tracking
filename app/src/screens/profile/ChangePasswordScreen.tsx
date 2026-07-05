@@ -10,11 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useTopInset, useNavBottomInset } from '../../hooks/useBottomSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type RootStackParamList = {
   EditProfile: undefined;
@@ -81,7 +81,8 @@ function PasswordInput({ label, value, onChangeText, placeholder }: PasswordInpu
 
 export default function ChangePasswordScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
+  const navBottom = useNavBottomInset();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -147,7 +148,7 @@ export default function ChangePasswordScreen() {
       {/* ── Gradient Header ── */}
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
@@ -158,7 +159,7 @@ export default function ChangePasswordScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: navBottom + 32 }]}
       >
         {/* ── Form Card ── */}
         <View style={styles.formCard}>

@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTopInset, useNavBottomInset } from '../../hooks/useBottomSpacing';
 import { useAuth } from '../../context/AuthContext';
 import { pickAndUploadProfilePhoto } from '../../services/profilePhoto';
 
@@ -54,7 +54,8 @@ interface FormState {
 
 export default function EditProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
+  const navBottom = useNavBottomInset();
   const { user, updateProfile } = useAuth();
 
   const [form, setForm] = useState<FormState>({
@@ -131,7 +132,7 @@ export default function EditProfileScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <LinearGradient colors={['#2563EB', '#1D4ED8']} style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <LinearGradient colors={['#2563EB', '#1D4ED8']} style={[styles.header, { paddingTop: headerTop }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -141,7 +142,7 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       </LinearGradient>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: navBottom + 32 }]}>
         <View style={styles.avatarCard}>
           <TouchableOpacity onPress={handlePickPhoto} activeOpacity={0.85} disabled={uploadingPhoto}>
             <View style={styles.avatarWrapper}>

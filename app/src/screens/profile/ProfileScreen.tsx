@@ -12,9 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
-import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTabScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 type RootStackParamList = {
   EditProfile: undefined;
@@ -91,7 +90,7 @@ function SettingsRow({ iconName, iconBg, label, onPress, badge, isLast }: Settin
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { user, signOut, refreshProfile } = useAuth();
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(20);
   const bottomPadding = useTabScreenBottomPadding();
 
   useFocusEffect(
@@ -159,7 +158,7 @@ export default function ProfileScreen() {
           colors={['#1E3A8A', '#2563EB']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.headerGradient, { paddingTop: insets.top + 20 }]}
+          style={[styles.headerGradient, { paddingTop: headerTop }]}
         >
           {/* Decorative circles */}
           <View style={styles.decor1} />

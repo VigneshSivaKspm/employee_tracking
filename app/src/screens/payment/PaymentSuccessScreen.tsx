@@ -6,8 +6,8 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -55,6 +55,7 @@ export default function PaymentSuccessScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<RoutePropType>();
   const { planName, price, transactionId } = route.params;
+  const topInset = useTopInset(16);
 
   const handleBackToHome = () => {
     navigation.reset({
@@ -64,12 +65,12 @@ export default function PaymentSuccessScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <StatusBar style="dark" />
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: topInset }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Checkmark Circle */}
@@ -122,7 +123,7 @@ export default function PaymentSuccessScreen() {
           <Text style={styles.homeBtnText}>Back to Home</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

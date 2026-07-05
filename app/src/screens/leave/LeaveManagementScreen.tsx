@@ -9,14 +9,13 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAttendance } from '../../context/AttendanceContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import { Colors, Spacing, BorderRadius, Typography, Shadow } from '../../theme/colors';
 import type { LeaveRequest, LeaveStatus, RootStackParamList } from '../../types';
-import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTabScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -88,7 +87,7 @@ function UpcomingLeaveCard({ leave }: { leave: LeaveRequest }) {
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
 export default function LeaveManagementScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(16);
   const bottomPadding = useTabScreenBottomPadding();
   const navigation = useNavigation<Nav>();
   const { leaveRequests, leaveBalance } = useAttendance();
@@ -110,7 +109,7 @@ export default function LeaveManagementScreen() {
           colors={['#2563EB', '#1D4ED8']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.header, { paddingTop: insets.top + 16 }]}
+          style={[styles.header, { paddingTop: headerTop }]}
         >
           <View style={styles.headerRow}>
             <Text style={styles.headerTitle}>Leave</Text>

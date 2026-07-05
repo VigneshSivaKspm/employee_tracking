@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -32,7 +32,7 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const DAYS_SHORT = ['S','M','T','W','T','F','S'];
 
 export default function CalendarScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
   const navigation = useNavigation();
   const { attendanceHistory, leaveRequests } = useAttendance();
 
@@ -91,7 +91,7 @@ export default function CalendarScreen() {
       <StatusBar style="light" />
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>

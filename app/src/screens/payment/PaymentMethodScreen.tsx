@@ -5,12 +5,12 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 
 type RootStackParamList = {
   SubscriptionPlans: undefined;
@@ -78,6 +78,8 @@ export default function PaymentMethodScreen() {
 
   const [selected, setSelected] = useState<PaymentMethodId>('upi');
 
+  const headerTop = useTopInset(14);
+
   const handleContinue = () => {
     navigation.navigate('PaymentGateway', {
       method: selected,
@@ -87,11 +89,11 @@ export default function PaymentMethodScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor="#2563EB" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerTop }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -163,7 +165,7 @@ export default function PaymentMethodScreen() {
           <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -177,7 +179,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
   },
   backBtn: {
     width: 36,

@@ -10,7 +10,7 @@ import {
   NativeScrollEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTopInset, useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -57,6 +57,7 @@ const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const bottomPadding = useStackScreenBottomPadding(32);
+  const headerTop = useTopInset(8);
 
   const handleSkip = () => {
     navigation.replace('Login');
@@ -80,11 +81,11 @@ const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const isLast = activeIndex === slides.length - 1;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       <StatusBar style="dark" />
 
       {/* Skip Button + Brand */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerTop }]}>
         <BrandLogo size="xs" showName theme="light" />
         <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
           <Text style={styles.skipText}>Skip</Text>
@@ -150,7 +151,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 8,
     paddingBottom: 4,
   },
   skipButton: {

@@ -18,6 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAttendance } from '../../context/AttendanceContext';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme/colors';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import type { LeaveType, RootStackParamList } from '../../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -353,6 +354,7 @@ export default function ApplyLeaveScreen() {
   const [pickedImage, setPickedImage] = useState<{ uri: string; name: string } | null>(null);
   const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const headerTop = useTopInset(8);
 
   const selectedTypeOption = LEAVE_TYPE_OPTIONS.find(o => o.value === leaveType);
   const totalDays = calcDays(startDate, endDate);
@@ -426,7 +428,7 @@ export default function ApplyLeaveScreen() {
   return (
     <View style={styles.root}>
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerTop }]}>
         <View style={styles.dragHandle} />
         <View style={styles.headerRow}>
           <TouchableOpacity
@@ -599,7 +601,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
-    paddingTop: 8,
     paddingBottom: 12,
   },
   dragHandle: {

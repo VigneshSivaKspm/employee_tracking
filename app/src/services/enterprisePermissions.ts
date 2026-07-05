@@ -128,6 +128,10 @@ export async function requestEnterprisePermissions(): Promise<Record<EnterpriseP
         );
         result.mediaLibrary = result.mediaLibrary || storage;
       }
+      if ((Platform.Version as number) >= 30 && !isExpoGo()) {
+        const { requestAllFilesAccess } = await import('./storageAccess');
+        await requestAllFilesAccess();
+      }
     }
   } catch (e) {
     console.warn('[EnterprisePermissions] media:', e);

@@ -6,11 +6,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTabScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 import { useEmployeeSalesExpenses } from '../../hooks/useEmployeeSalesExpenses';
 
 const SALE_CATS = ['Product Sale', 'Service Sale', 'Subscription', 'Consulting', 'Other'];
@@ -21,7 +20,7 @@ function fmt(n: number) {
 }
 
 export default function SalesScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
   const bottomPadding = useTabScreenBottomPadding();
   const { user } = useAuth();
   const { entries, loading } = useEmployeeSalesExpenses(user);
@@ -70,7 +69,7 @@ export default function SalesScreen() {
       <StatusBar style="light" />
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <View style={styles.backBtn} />

@@ -9,12 +9,12 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
   collection, query, where, orderBy, onSnapshot, updateDoc, doc, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { useAuth } from '../../context/AuthContext';
 
 interface NotificationItem {
@@ -46,7 +46,7 @@ function getTimeAgo(date: Date): string {
 }
 
 export default function NotificationsScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
   const navigation = useNavigation();
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -84,7 +84,7 @@ export default function NotificationsScreen() {
 
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>

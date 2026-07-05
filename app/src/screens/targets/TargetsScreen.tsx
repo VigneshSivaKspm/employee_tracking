@@ -17,11 +17,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTabScreenBottomPadding, useTopInset, useNavBottomInset } from '../../hooks/useBottomSpacing';
 import { useEmployeeTargets } from '../../hooks/useEmployeeTargets';
 import type { EmployeeTarget, TargetComment, TargetStatus } from '../../types';
 
@@ -93,7 +92,8 @@ function isOwnComment(c: TargetComment, userId?: string): boolean {
 }
 
 export default function TargetsScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
+  const navBottom = useNavBottomInset();
   const bottomPadding = useTabScreenBottomPadding();
   const { user } = useAuth();
   const { targets, loading } = useEmployeeTargets(user);
@@ -258,7 +258,7 @@ export default function TargetsScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <LinearGradient colors={['#1E3A8A', '#2563EB', '#3B82F6']} style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <LinearGradient colors={['#1E3A8A', '#2563EB', '#3B82F6']} style={[styles.header, { paddingTop: headerTop }]}>
         <Text style={styles.headerTitle}>Tasks & Targets</Text>
         <Text style={styles.headerSub}>Assigned by your branch admin</Text>
         <View style={styles.statsGrid}>
@@ -310,7 +310,7 @@ export default function TargetsScreen() {
       <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
         <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.modalBackdrop} onPress={() => setSelected(null)} />
-          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <View style={[styles.sheet, { paddingBottom: Math.max(navBottom, 16) }]}>
             {selected && (
               <>
                 <View style={styles.sheetHandle} />

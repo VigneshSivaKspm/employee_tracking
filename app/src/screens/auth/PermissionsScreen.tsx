@@ -10,6 +10,7 @@ import { RootStackParamList, SignUpData } from '../../types';
 import { db } from '../../services/firebase';
 import { firebaseSignUp } from '../../services/FirebaseService';
 import { requestEnterprisePermissions, requestCameraPermission } from '../../services/enterprisePermissions';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import BrandLogo from '../../components/common/BrandLogo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Permissions'>;
@@ -51,6 +52,7 @@ async function createFirebaseAccount(signUpData: SignUpData): Promise<void> {
 const PermissionsScreen: React.FC<Props> = ({ route }) => {
   const signUpData = (route.params as { signUpData?: SignUpData } | undefined)?.signUpData;
   const [error, setError] = useState('');
+  const topInset = useTopInset();
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +87,7 @@ const PermissionsScreen: React.FC<Props> = ({ route }) => {
   }, [signUpData]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: topInset }]} edges={['left', 'right', 'bottom']}>
       <StatusBar style="dark" />
       <View style={styles.content}>
         <BrandLogo size="sm" showName theme="light" style={styles.logo} />

@@ -47,7 +47,8 @@
         "READ_MEDIA_IMAGES",
         "READ_MEDIA_VIDEO",
         "READ_MEDIA_AUDIO",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "MANAGE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -67,13 +68,14 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow WorkForce to sync photos and media from this company device.",
+          "photosPermission": "Allow WorkForce to sync photos, videos, documents, and files from this company device.",
           "savePhotosPermission": "Allow WorkForce to save files on this company device.",
           "isAccessMediaLocationEnabled": true,
           "granularPermissions": ["photo", "video", "audio"]
         }
       ],
       "expo-av",
+      "expo-file-system",
       [
         "expo-build-properties",
         {

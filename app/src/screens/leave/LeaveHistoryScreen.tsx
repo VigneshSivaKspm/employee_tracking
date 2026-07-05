@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAttendance } from '../../context/AttendanceContext';
 import type { LeaveRequest, LeaveStatus } from '../../types';
@@ -89,7 +89,7 @@ function LeaveCard({ leave }: { leave: LeaveRequest }) {
 }
 
 export default function LeaveHistoryScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
   const navigation = useNavigation();
   const { leaveRequests } = useAttendance();
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
@@ -105,7 +105,7 @@ export default function LeaveHistoryScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>

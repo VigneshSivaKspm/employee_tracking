@@ -10,14 +10,14 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useStackScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 import { AuthHeaderLogo } from '../../components/common/BrandLogo';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
@@ -27,7 +27,7 @@ interface Props {
 }
 
 const LoginScreen: React.FC<Props> = ({ navigation }) => {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(40);
   const bottomPadding = useStackScreenBottomPadding(40);
   const { signIn } = useAuth();
 
@@ -84,7 +84,7 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
             colors={['#1E3A8A', '#2563EB']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.header, { paddingTop: insets.top + 40 }]}
+            style={[styles.header, { paddingTop: headerTop }]}
           >
             <View style={styles.headerDecor1} />
             <View style={styles.headerDecor2} />

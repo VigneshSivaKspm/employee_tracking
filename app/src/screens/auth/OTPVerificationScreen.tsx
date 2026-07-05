@@ -10,7 +10,8 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -32,7 +33,7 @@ interface Props {
 
 const OTPVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
   const { phone, type } = route.params;
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(40);
 
   const [otp, setOtp] = useState(['', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -121,7 +122,7 @@ const OTPVerificationScreen: React.FC<Props> = ({ navigation, route }) => {
           {/* Blue Gradient Header */}
           <LinearGradient
             colors={['#2563EB', '#1D4ED8']}
-            style={[styles.header, { paddingTop: insets.top + 40 }]}
+            style={[styles.header, { paddingTop: headerTop }]}
           >
             <TouchableOpacity
               style={styles.backButton}

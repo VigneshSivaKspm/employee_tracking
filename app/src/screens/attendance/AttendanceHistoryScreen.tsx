@@ -7,10 +7,10 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAttendance } from '../../context/AttendanceContext';
@@ -105,7 +105,7 @@ function resolveRecordStatus(record: AttendanceRecord): StatusKey {
 }
 
 export default function AttendanceHistoryScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(16);
   const navigation = useNavigation<NavigationProp>();
   const { attendanceHistory } = useAttendance();
 
@@ -226,7 +226,7 @@ export default function AttendanceHistoryScreen() {
         {/* ── Blue Gradient Header ── */}
         <LinearGradient
           colors={['#2563EB', '#1D4ED8']}
-          style={[styles.header, { paddingTop: insets.top + 16 }]}
+          style={[styles.header, { paddingTop: headerTop }]}
         >
           <View style={styles.headerRow}>
             <TouchableOpacity

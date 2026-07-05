@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import BrandLogo from '../../components/common/BrandLogo';
 
 type SplashScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
@@ -19,6 +20,7 @@ interface Props {
 
 const SplashScreen: React.FC<Props> = ({ navigation }) => {
   const { isLoading } = useAuth();
+  const topInset = useTopInset();
 
   useEffect(() => {
     if (isLoading) return;
@@ -31,7 +33,7 @@ const SplashScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <LinearGradient
       colors={['#2563EB', '#1D4ED8']}
-      style={styles.container}
+      style={[styles.container, { paddingTop: topInset }]}
     >
       <StatusBar style="light" />
 

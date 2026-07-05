@@ -10,9 +10,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAttendance } from '../../context/AttendanceContext';
-import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTabScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 const { width } = Dimensions.get('window');
 
@@ -53,7 +52,7 @@ function parseTimeToMinutes(timeStr: string): number {
 }
 
 export default function AnalyticsScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(16);
   const bottomPadding = useTabScreenBottomPadding();
   const { attendanceHistory } = useAttendance();
 
@@ -165,7 +164,7 @@ export default function AnalyticsScreen() {
         {/* Header */}
         <LinearGradient
           colors={['#2563EB', '#1D4ED8']}
-          style={[styles.header, { paddingTop: insets.top + 16 }]}
+          style={[styles.header, { paddingTop: headerTop }]}
         >
           <Text style={styles.headerTitle}>Analytics</Text>
           <View style={styles.monthNav}>

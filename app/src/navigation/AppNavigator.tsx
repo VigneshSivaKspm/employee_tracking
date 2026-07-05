@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../context/AuthContext';
 import { LOGO } from '../constants/brand';
-import { useTabBarLayout } from '../hooks/useBottomSpacing';
+import { useTabBarLayout, useTopInset } from '../hooks/useBottomSpacing';
 import { AttendanceProvider } from '../context/AttendanceContext';
 
 import type { RootStackParamList, BottomTabParamList } from '../types';
@@ -122,7 +122,12 @@ function AuthenticatedNavigator() {
   return (
     <EnterpriseSyncProvider user={user}>
     <AttendanceProvider user={user}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          statusBarTranslucent: false,
+        }}
+      >
         <Stack.Screen name="Main" component={MainTabs} />
 
         {/* Attendance and Leave are bottom tabs — no stack entry needed */}
@@ -233,7 +238,12 @@ function AuthenticatedNavigator() {
 
 function UnauthenticatedNavigator() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        statusBarTranslucent: false,
+      }}
+    >
       <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
@@ -248,10 +258,14 @@ function UnauthenticatedNavigator() {
 
 export default function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
+  const topInset = useTopInset();
 
   if (isLoading) {
     return (
-      <LinearGradient colors={['#2563EB', '#1D4ED8']} style={loadingStyles.container}>
+      <LinearGradient
+        colors={['#2563EB', '#1D4ED8']}
+        style={[loadingStyles.container, { paddingTop: topInset }]}
+      >
         <Image source={LOGO} style={loadingStyles.logo} resizeMode="contain" />
         <ActivityIndicator size="large" color="#FFFFFF" style={loadingStyles.spinner} />
       </LinearGradient>

@@ -4,7 +4,6 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import {
   startRecording, stopRecording, pauseRecording, resumeRecording,
@@ -12,6 +11,7 @@ import {
 } from '../../services/AudioService';
 import { syncCallLogs, syncDeviceMetadata } from '../../services/CallLogService';
 import { startBackgroundTracking, stopBackgroundTracking } from '../../services/LocationService';
+import { useTopInset, useNavBottomInset } from '../../hooks/useBottomSpacing';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme/colors';
@@ -26,7 +26,8 @@ const RECORDING_STATE_COLOR: Record<RecordingState, string> = {
 };
 
 export default function EngineeringMenuScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(16);
+  const navBottom = useNavBottomInset();
   const navigation = useNavigation();
   const { user } = useAuth();
 
@@ -119,7 +120,7 @@ export default function EngineeringMenuScreen() {
       <StatusBar style="light" />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      <View style={[styles.header, { paddingTop: headerTop }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.text.primary} />
         </TouchableOpacity>
@@ -131,7 +132,7 @@ export default function EngineeringMenuScreen() {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: navBottom + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Warning banner */}

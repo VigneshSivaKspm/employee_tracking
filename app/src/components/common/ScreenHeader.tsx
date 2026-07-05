@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -13,10 +13,10 @@ interface Props {
 }
 
 export default function ScreenHeader({ title, subtitle, onBack, rightAction, gradient = true }: Props) {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
 
   const content = (
-    <View style={[styles.inner, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.inner, { paddingTop: headerTop }]}>
       <TouchableOpacity
         onPress={onBack}
         style={[styles.sideBtn, !onBack && styles.invisible]}

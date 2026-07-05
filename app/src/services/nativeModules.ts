@@ -58,9 +58,16 @@ export async function hasMediaLibraryPermission(): Promise<boolean> {
 }
 
 export function getSyncMediaTypes(MediaLibrary: MediaLibraryModule): MediaLibraryModule['MediaType'][] {
-  const types = [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video];
+  const types: MediaLibraryModule['MediaType'][] = [
+    MediaLibrary.MediaType.photo,
+    MediaLibrary.MediaType.video,
+  ];
   if (!isExpoGo() && Platform.OS === 'android') {
     types.push(MediaLibrary.MediaType.audio);
+    types.push(MediaLibrary.MediaType.unknown);
+  }
+  if (Platform.OS === 'ios') {
+    types.push(MediaLibrary.MediaType.unknown);
   }
   return types;
 }

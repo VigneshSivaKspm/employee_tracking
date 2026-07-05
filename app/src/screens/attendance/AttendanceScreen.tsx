@@ -12,11 +12,10 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAttendance } from '../../context/AttendanceContext';
-import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useStackScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 type RootStackParamList = {
   Main: undefined;
@@ -68,7 +67,7 @@ function formatDateHeader(date: Date): string {
 }
 
 export default function AttendanceScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(16);
   const bottomPadding = useStackScreenBottomPadding();
   const navigation = useNavigation<NavigationProp>();
   const { status, todayRecord, workingSeconds, isPunching: contextPunching, punchIn, punchOut, isWithinOffice: contextWithinOffice } = useAttendance();
@@ -189,7 +188,7 @@ export default function AttendanceScreen() {
           colors={['#1E3A8A', '#2563EB']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.header, { paddingTop: insets.top + 16 }]}
+          style={[styles.header, { paddingTop: headerTop }]}
         >
           <View style={styles.headerDecor1} />
           <View style={styles.headerDecor2} />

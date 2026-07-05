@@ -11,14 +11,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAttendance } from '../../context/AttendanceContext';
 import { useAuth } from '../../context/AuthContext';
-import { useTabScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useTabScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 import { LOGO } from '../../constants/brand';
 
 type RootStackParamList = {
@@ -100,7 +99,7 @@ const CATEGORY_COLOR: Record<string, { bg: string; icon: string }> = {
 };
 
 export default function DashboardScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(16);
   const navigation = useNavigation<NavigationProp>();
   const { status, todayRecord, workingSeconds, attendanceHistory } = useAttendance();
   const { user } = useAuth();
@@ -202,7 +201,7 @@ export default function DashboardScreen() {
           colors={['#1E3A8A', '#2563EB']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.header, { paddingTop: insets.top + 16 }]}
+          style={[styles.header, { paddingTop: headerTop }]}
         >
           {/* Decorative circles */}
           <View style={styles.decor1} />

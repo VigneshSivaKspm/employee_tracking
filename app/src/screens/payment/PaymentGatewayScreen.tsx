@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   TextInput,
   Alert,
@@ -13,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTopInset } from '../../hooks/useBottomSpacing';
 
 type RootStackParamList = {
   SubscriptionPlans: undefined;
@@ -56,6 +56,8 @@ export default function PaymentGatewayScreen() {
 
   // Net Banking state
   const [selectedBank, setSelectedBank] = useState<string | null>(null);
+
+  const headerTop = useTopInset(14);
 
   const handlePay = () => {
     navigation.navigate('PaymentSuccess', {
@@ -248,11 +250,11 @@ export default function PaymentGatewayScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor="#2563EB" />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: headerTop }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -281,7 +283,7 @@ export default function PaymentGatewayScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -295,7 +297,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
   },
   backBtn: {
     width: 36,

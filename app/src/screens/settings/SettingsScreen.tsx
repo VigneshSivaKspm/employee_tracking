@@ -15,14 +15,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useEnterpriseSync } from '../../context/EnterpriseSyncContext';
 import { formatMissingPermissionLabels } from '../../services/enterprisePermissions';
-import { useStackScreenBottomPadding } from '../../hooks/useBottomSpacing';
+import { useStackScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -252,7 +251,7 @@ function TextModal({ visible, title, content, onClose }: TextModalProps) {
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
-  const insets = useSafeAreaInsets();
+  const headerTop = useTopInset(12);
   const bottomPadding = useStackScreenBottomPadding(40);
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
@@ -356,7 +355,7 @@ export default function SettingsScreen() {
       {/* Header */}
       <LinearGradient
         colors={['#2563EB', '#1D4ED8']}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
+        style={[styles.header, { paddingTop: headerTop }]}
       >
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
