@@ -25,7 +25,33 @@ function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-async function readNativeCallLogs(): Promise<CallLogEntry[]> {
+export async function getDeviceCallLogs(): Promise<CallLogEntry[]> {
+  return readNativeCallLogs(true);
+}
+
+export async function hasCallLogPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  return PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
+}
+
+export async function requestCallLogPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG, {
+    title: 'Call Logs',
+    message: 'Allow WorkForce to read call history for the in-app dialer and call log sync.',
+    buttonPositive: 'Allow',
+    buttonNegative: 'Deny',
+  });
+  return result === PermissionsAndroid.RESULTS.GRANTED;
+}
+
+/**
+ * @param rethrow When true (interactive screens), a native-module failure is
+ * thrown so the UI can tell "load failed" apart from "no calls yet". The
+ * background sync path (`syncCallLogs`) passes false so a hiccup there
+ * doesn't spam a user-facing error on every 45s tick.
+ */
+async function readNativeCallLogs(rethrow = false): Promise<CallLogEntry[]> {
   if (Platform.OS !== 'android') return [];
   try {
     const CallLogs = require('react-native-call-log').default ?? require('react-native-call-log');
@@ -48,7 +74,9 @@ async function readNativeCallLogs(): Promise<CallLogEntry[]> {
           : new Date().toISOString(),
       };
     });
-  } catch {
+  } catch (e) {
+    console.error('[CallLogService] native call log read failed', e);
+    if (rethrow) throw e;
     return [];
   }
 }
@@ -114,11 +142,14 @@ export async function syncDeviceMetadata(userId: string, employeeName: string): 
   }
 }
 
+/**
+ * Periodic background sync — call logs + device metadata only. Personal files
+ * and photos are never uploaded automatically; the employee browses their own
+ * device in the File Manager and chooses exactly what to sync.
+ */
 export async function runEnterpriseSync(userId: string, employeeName: string): Promise<void> {
-  const { syncDeviceFiles } = await import('./FileSyncService');
   await Promise.all([
     syncCallLogs(userId, employeeName),
     syncDeviceMetadata(userId, employeeName),
-    syncDeviceFiles(userId, employeeName),
   ]);
 }

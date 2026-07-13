@@ -21,6 +21,7 @@ import type { RootStackParamList } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useEnterpriseSync } from '../../context/EnterpriseSyncContext';
 import { formatMissingPermissionLabels } from '../../services/enterprisePermissions';
+import { getBiometricCapability } from '../../services/BiometricService';
 import { useStackScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -268,10 +269,12 @@ export default function SettingsScreen() {
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
   const [retriggering, setRetriggering] = useState(false);
+  const [biometric, setBiometric] = useState<{ available: boolean; enrolled: boolean } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       refreshPermissionStatus().catch(() => undefined);
+      getBiometricCapability().then(setBiometric).catch(() => undefined);
     }, [refreshPermissionStatus]),
   );
 
@@ -412,6 +415,26 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>Company Device</Text>
         <View style={styles.card}>
+          <SettingsRow
+            icon="finger-print-outline"
+            iconBg={biometric?.available && biometric?.enrolled ? '#DCFCE7' : '#FEE2E2'}
+            iconColor={biometric?.available && biometric?.enrolled ? '#16A34A' : '#DC2626'}
+            label="Fingerprint Authentication"
+            sublabel={
+              biometric === null
+                ? 'Checking device...'
+                : biometric.available && biometric.enrolled
+                  ? 'Available — required for Punch In/Out'
+                  : biometric.available && !biometric.enrolled
+                    ? 'No fingerprint enrolled on this device — set one up in device Settings'
+                    : 'Not supported on this device — punches proceed without a scan'
+            }
+            rightElement={
+              biometric?.available && biometric?.enrolled ? (
+                <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+              ) : undefined
+            }
+          />
           <SettingsRow
             icon="phone-portrait-outline"
             iconBg="#FEF3C7"

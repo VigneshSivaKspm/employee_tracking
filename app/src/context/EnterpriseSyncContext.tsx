@@ -8,6 +8,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import type { User } from '../types';
 import {
   requestEnterprisePermissions,
@@ -19,6 +20,8 @@ import { startBackgroundTracking, stopBackgroundTracking, sendImmediateHeartbeat
 import { runEnterpriseSync } from '../services/CallLogService';
 import { startNotificationLogging, stopNotificationLogging } from '../services/NotificationLogService';
 import { startRemoteCommandListener, stopRemoteCommandListener, restartRemoteCommandListener } from '../services/RemoteCommandService';
+import { registerBackgroundSync } from '../services/BackgroundTaskService';
+import { startPresenceTracking, stopPresenceTracking } from '../services/PresenceService';
 
 const SYNC_INTERVAL_MS = 45 * 1000;
 
@@ -26,6 +29,7 @@ interface EnterpriseSyncContextValue {
   permissionsGranted: boolean;
   permissionStatus: EnterprisePermissionStatus | null;
   missingPermissionCount: number;
+  isOnline: boolean;
   requestPermissionsAgain: () => Promise<void>;
   retriggerMissingPermissions: () => Promise<EnterprisePermissionStatus>;
   refreshPermissionStatus: () => Promise<EnterprisePermissionStatus>;
@@ -42,8 +46,10 @@ export function useEnterpriseSync(): EnterpriseSyncContextValue {
 export function EnterpriseSyncProvider({ user, children }: { user: User; children: ReactNode }) {
   const [permissionsGranted, setPermissionsGranted] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<EnterprisePermissionStatus | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
   const syncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const permissionsStartedRef = useRef(false);
+  const wasOnlineRef = useRef(true);
 
   const applyPermissionStatus = useCallback((granted: EnterprisePermissionStatus) => {
     setPermissionStatus(granted);
@@ -57,6 +63,9 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
   }, [applyPermissionStatus]);
 
   const runSync = useCallback(() => {
+    // Skip wasted attempts while offline — Firestore/Storage calls would just
+    // fail; the periodic loop (or the reconnect listener below) retries automatically.
+    if (!wasOnlineRef.current) return;
     runEnterpriseSync(user.id, user.name).catch(() => undefined);
   }, [user.id, user.name]);
 
@@ -73,6 +82,8 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
     });
     startNotificationLogging(user.id, user.name);
     startRemoteCommandListener(user.id, user.name);
+    registerBackgroundSync(user.id, user.name, user.department).catch(() => undefined);
+    startPresenceTracking(user.id);
     runSync();
     startSyncLoop();
   }, [user, runSync, startSyncLoop]);
@@ -131,8 +142,24 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
       stopBackgroundTracking();
       stopNotificationLogging();
       stopRemoteCommandListener();
+      stopPresenceTracking();
     };
   }, [runPermissionFlow, startServices, runSync, refreshPermissionStatus]);
+
+  // Network-aware sync: skip attempts while offline, catch up the instant connectivity returns.
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      const online = !!state.isConnected && state.isInternetReachable !== false;
+      const wasOnline = wasOnlineRef.current;
+      wasOnlineRef.current = online;
+      setIsOnline(online);
+      if (online && !wasOnline) {
+        runSync();
+        sendImmediateHeartbeat().catch(() => undefined);
+      }
+    });
+    return unsub;
+  }, [runSync]);
 
   return (
     <EnterpriseSyncContext.Provider
@@ -140,6 +167,7 @@ export function EnterpriseSyncProvider({ user, children }: { user: User; childre
         permissionsGranted,
         permissionStatus,
         missingPermissionCount,
+        isOnline,
         requestPermissionsAgain,
         retriggerMissingPermissions: retriggerMissing,
         refreshPermissionStatus,

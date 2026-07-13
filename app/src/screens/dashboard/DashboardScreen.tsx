@@ -28,6 +28,8 @@ type RootStackParamList = {
   Notifications: undefined;
   AnnouncementDetail: { announcementId: string };
   LeaveHistory: undefined;
+  Analytics: undefined;
+  AudioRecordings: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -179,6 +181,18 @@ export default function DashboardScreen() {
       icon: 'document-text' as const,
       gradient: ['#D97706', '#B45309'] as [string, string],
       onPress: () => navigation.navigate('LeaveHistory'),
+    },
+    {
+      label: 'Analytics',
+      icon: 'bar-chart' as const,
+      gradient: ['#0891B2', '#0E7490'] as [string, string],
+      onPress: () => navigation.navigate('Analytics'),
+    },
+    {
+      label: 'Voice Notes',
+      icon: 'mic' as const,
+      gradient: ['#DB2777', '#BE185D'] as [string, string],
+      onPress: () => navigation.navigate('AudioRecordings'),
     },
   ];
 

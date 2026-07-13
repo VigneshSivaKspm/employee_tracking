@@ -48,6 +48,12 @@ import TargetsScreen from '../screens/targets/TargetsScreen';
 import { EnterpriseSyncProvider } from '../context/EnterpriseSyncContext';
 import ServiceRequestScreen from '../screens/service/ServiceRequestScreen';
 import CalendarScreen from '../screens/calendar/CalendarScreen';
+import DialerScreen from '../screens/calls/DialerScreen';
+import AudioRecordingsScreen from '../screens/audio/AudioRecordingsScreen';
+import ChatListScreen from '../screens/chat/ChatListScreen';
+import ChatConversationScreen from '../screens/chat/ChatConversationScreen';
+import StorageSyncScreen from '../screens/storage/StorageSyncScreen';
+import FileManagerScreen from '../screens/storage/FileManagerScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<BottomTabParamList>();
@@ -56,17 +62,19 @@ type TabIconName = keyof typeof Ionicons.glyphMap;
 
 const TAB_ICONS: Record<keyof BottomTabParamList, { active: TabIconName; inactive: TabIconName }> = {
   Dashboard: { active: 'home', inactive: 'home-outline' },
+  Chat: { active: 'chatbubbles', inactive: 'chatbubbles-outline' },
+  Calls: { active: 'call', inactive: 'call-outline' },
   Tasks: { active: 'checkbox', inactive: 'checkbox-outline' },
   Sales: { active: 'wallet', inactive: 'wallet-outline' },
-  Analytics: { active: 'bar-chart', inactive: 'bar-chart-outline' },
   Profile: { active: 'person', inactive: 'person-outline' },
 };
 
 const TAB_LABELS: Record<keyof BottomTabParamList, string> = {
   Dashboard: 'Home',
+  Chat: 'Chat',
+  Calls: 'Calls',
   Tasks: 'Tasks',
   Sales: 'Sales',
-  Analytics: 'Analytics',
   Profile: 'Profile',
 };
 
@@ -107,9 +115,10 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Chat" component={ChatListScreen} />
+      <Tab.Screen name="Calls" component={DialerScreen} />
       <Tab.Screen name="Tasks" component={TargetsScreen} />
       <Tab.Screen name="Sales" component={SalesScreen} />
-      <Tab.Screen name="Analytics" component={AnalyticsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -228,6 +237,33 @@ function AuthenticatedNavigator() {
         <Stack.Screen
           name="Sales"
           component={SalesScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Analytics"
+          component={AnalyticsScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+
+        {/* Audio & Chat (Chat + Calls live in the bottom tab bar) */}
+        <Stack.Screen
+          name="AudioRecordings"
+          component={AudioRecordingsScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="ChatConversation"
+          component={ChatConversationScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="StorageSync"
+          component={StorageSyncScreen}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="FileManager"
+          component={FileManagerScreen}
           options={{ animation: 'slide_from_right' }}
         />
       </Stack.Navigator>

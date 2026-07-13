@@ -38,7 +38,7 @@ const EMPTY_COMPANY: Omit<Company, "id"> = {
 export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [tab, setTab] = useState<"branches" | "companies">("branches");
+  const [tab, setTab] = useState<"branches" | "companies">("companies");
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<Branch | Company | null>(null);
@@ -119,7 +119,7 @@ export default function BranchesPage() {
       <div className="bg-white rounded-xl border border-slate-200">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
           <div className="flex gap-1">
-            {(["branches", "companies"] as const).map(t => (
+            {(["companies", "branches"] as const).map(t => (
               <button key={t} onClick={() => { setTab(t); setSearch(""); }}
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${tab === t ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
                 {t}

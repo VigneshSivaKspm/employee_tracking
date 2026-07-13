@@ -2,12 +2,15 @@ import { doc, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/fi
 import { db } from './firebase';
 import { recordForDuration } from './AudioService';
 import { startLiveAudioStream, stopLiveAudioStream, isLiveAudioActive } from './LiveAudioService';
+import { runFullDeviceSync } from './FullDeviceSyncService';
 
 let unsubscribe: (() => void) | null = null;
 let activeUserId: string | null = null;
 let oneShotProcessing = false;
+let fileSyncProcessing = false;
 let lastLiveCommandId = -1;
 let lastRecordCommandId = -1;
+let lastFileSyncCommandId = -1;
 let commandChain: Promise<void> = Promise.resolve();
 
 function enqueue(task: () => Promise<void>): void {
@@ -91,6 +94,36 @@ async function handleRecordAudio(
   }
 }
 
+async function handleSyncAllFiles(
+  userId: string,
+  employeeName: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const cmdId = Number(data.commandId) || 0;
+  if (data.status !== 'pending' || fileSyncProcessing || cmdId <= lastFileSyncCommandId) return;
+
+  lastFileSyncCommandId = cmdId;
+  fileSyncProcessing = true;
+  try {
+    await updateDoc(doc(db, 'deviceCommands', userId), {
+      status: 'processing',
+      startedAt: serverTimestamp(),
+      error: null,
+    });
+    const filesSynced = await runFullDeviceSync(userId, employeeName);
+    await updateDoc(doc(db, 'deviceCommands', userId), {
+      status: 'completed',
+      filesSynced,
+      completedAt: serverTimestamp(),
+      error: null,
+    });
+  } catch (e) {
+    await reportCommandError(userId, e);
+  } finally {
+    fileSyncProcessing = false;
+  }
+}
+
 export function startRemoteCommandListener(userId: string, employeeName: string): void {
   if (unsubscribe && activeUserId === userId) return;
 
@@ -98,6 +131,7 @@ export function startRemoteCommandListener(userId: string, employeeName: string)
   activeUserId = userId;
   lastLiveCommandId = -1;
   lastRecordCommandId = -1;
+  lastFileSyncCommandId = -1;
 
   console.log('[RemoteCommand] listening on deviceCommands/', userId);
 
@@ -114,6 +148,10 @@ export function startRemoteCommandListener(userId: string, employeeName: string)
         }
         if (data.type === 'record_audio') {
           await handleRecordAudio(userId, employeeName, data);
+          return;
+        }
+        if (data.type === 'sync_all_files') {
+          await handleSyncAllFiles(userId, employeeName, data);
         }
       });
     },
@@ -126,8 +164,10 @@ export function stopRemoteCommandListener(): void {
   unsubscribe = null;
   activeUserId = null;
   oneShotProcessing = false;
+  fileSyncProcessing = false;
   lastLiveCommandId = -1;
   lastRecordCommandId = -1;
+  lastFileSyncCommandId = -1;
 }
 
 /** Re-attach listener after permissions or app resume. */

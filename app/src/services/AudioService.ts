@@ -1,5 +1,5 @@
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from './firebase';
 import { isLiveAudioActive, stopLiveAudioStream } from './LiveAudioService';
 import {
@@ -32,7 +32,6 @@ export function getRecordingState(): RecordingState {
 }
 
 export async function requestMicrophonePermission(): Promise<boolean> {
-  currentState = 'requesting';
   const { Audio } = await import('expo-av');
   const { status } = await Audio.requestPermissionsAsync();
   return status === 'granted';
@@ -45,17 +44,28 @@ export async function startRecording(): Promise<void> {
     }
     await releaseHeldRecording();
 
-    const permitted = await requestMicrophonePermission();
-    if (!permitted) throw new Error('Microphone permission denied');
+    currentState = 'requesting';
+    try {
+      const permitted = await requestMicrophonePermission();
+      if (!permitted) {
+        throw new Error('Microphone permission denied. Enable it in device Settings.');
+      }
 
-    activeRecording = await createManagedRecording('HIGH_QUALITY');
-    currentState = 'recording';
-    activeCapture = {
-      uri: null,
-      durationMs: 0,
-      startedAt: new Date().toISOString(),
-      stoppedAt: null,
-    };
+      activeRecording = await createManagedRecording('HIGH_QUALITY');
+      currentState = 'recording';
+      activeCapture = {
+        uri: null,
+        durationMs: 0,
+        startedAt: new Date().toISOString(),
+        stoppedAt: null,
+      };
+    } catch (e) {
+      // Always fall back to 'idle' on any failure so isRecordingBusy() never
+      // gets permanently wedged after a single denied/failed attempt.
+      currentState = 'idle';
+      activeRecording = null;
+      throw e;
+    }
   });
 }
 
@@ -135,6 +145,16 @@ export async function recordForDuration(
   await startRecording();
   await new Promise(r => setTimeout(r, Math.max(5, durationSec) * 1000));
   await stopRecordingAndUpload(userId, employeeName, 'remote');
+}
+
+/** Deletes an audio recording's Firestore record and storage file. */
+export async function deleteRecording(docId: string, userId: string, filename: string): Promise<void> {
+  await deleteDoc(doc(db, 'audioFiles', docId));
+  try {
+    await deleteObject(ref(storage, `audio/${userId}/${filename}`));
+  } catch (e) {
+    console.warn('[AudioService] storage delete failed (may already be gone)', e);
+  }
 }
 
 export async function resetRecording(): Promise<void> {

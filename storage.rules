@@ -17,5 +17,11 @@ service firebase.storage {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
+    // Chat attachments (images/video/documents) — both participants need read/write
+    // access, so scope is "any authenticated employee" like the rest of this app's
+    // Firestore catch-all rule, rather than per-uid.
+    match /chatAttachments/{chatId}/{filename} {
+      allow read, write: if request.auth != null;
+    }
   }
 }

@@ -22,6 +22,9 @@ type RootStackParamList = {
   AnnouncementDetail: { announcementId: string };
   Settings: undefined;
   Login: undefined;
+  Analytics: undefined;
+  AudioRecordings: undefined;
+  StorageSync: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -208,6 +211,30 @@ export default function ProfileScreen() {
                 <InfoRow {...field} />
               </React.Fragment>
             ))}
+          </View>
+
+          {/* Communication — Chat and Calls live in the bottom tab bar */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Communication</Text>
+            <SettingsRow
+              iconName="bar-chart-outline"
+              iconBg="#0891B2"
+              label="Analytics"
+              onPress={() => navigation.navigate('Analytics')}
+            />
+            <SettingsRow
+              iconName="mic-outline"
+              iconBg="#DB2777"
+              label="Voice Notes"
+              onPress={() => navigation.navigate('AudioRecordings')}
+            />
+            <SettingsRow
+              iconName="cloud-upload-outline"
+              iconBg="#059669"
+              label="Storage & Sync"
+              onPress={() => navigation.navigate('StorageSync')}
+              isLast
+            />
           </View>
 
           {/* Account / Settings */}

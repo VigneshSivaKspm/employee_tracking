@@ -19,7 +19,13 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "WorkForce uses your location in the background for attendance tracking.",
         "NSMicrophoneUsageDescription": "WorkForce may access the microphone for enterprise compliance features.",
         "NSPhotoLibraryUsageDescription": "WorkForce syncs photos and media from this company device.",
-        "NSFaceIDUsageDescription": "WorkForce uses Face ID / Touch ID for secure authentication."
+        "NSFaceIDUsageDescription": "WorkForce uses Face ID / Touch ID for secure authentication.",
+        "NSContactsUsageDescription": "WorkForce accesses your contacts so you can call colleagues and clients directly from the in-app dialer.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "audio"
+        ]
       }
     },
     "android": {
@@ -37,9 +43,13 @@
         "RECORD_AUDIO",
         "READ_CALL_LOG",
         "READ_PHONE_STATE",
+        "CALL_PHONE",
+        "READ_CONTACTS",
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE",
         "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "FOREGROUND_SERVICE_DATA_SYNC",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "USE_BIOMETRIC",
@@ -71,11 +81,22 @@
           "photosPermission": "Allow WorkForce to sync photos, videos, documents, and files from this company device.",
           "savePhotosPermission": "Allow WorkForce to save files on this company device.",
           "isAccessMediaLocationEnabled": true,
-          "granularPermissions": ["photo", "video", "audio"]
+          "granularPermissions": [
+            "photo",
+            "video",
+            "audio"
+          ]
         }
       ],
       "expo-av",
       "expo-file-system",
+      "expo-task-manager",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow WorkForce to access your contacts so you can call colleagues and clients from the in-app dialer."
+        }
+      ],
       [
         "expo-build-properties",
         {
@@ -89,7 +110,8 @@
         }
       ],
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "expo-background-task"
     ],
     "owner": "vigneshsivakspm",
     "extra": {

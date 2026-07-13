@@ -69,6 +69,7 @@ export interface PunchInMeta {
   employeeId?: string;
   employeeName?: string;
   dept?: string;
+  verifiedBy?: 'fingerprint' | 'no_biometric_hardware';
 }
 
 export async function recordPunchIn(
@@ -88,6 +89,7 @@ export async function recordPunchIn(
     employeeId: meta.employeeId || '',
     employeeName: meta.employeeName || '',
     dept: meta.dept || '',
+    verifiedBy: meta.verifiedBy || 'unknown',
     createdAt: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, 'attendance'), payload);

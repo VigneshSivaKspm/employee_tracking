@@ -10,6 +10,8 @@ export type EnterprisePermissionKey =
   | 'mediaLibrary'
   | 'callLog'
   | 'phoneState'
+  | 'callPhone'
+  | 'contacts'
   | 'notifications';
 
 export type EnterprisePermissionStatus = Record<EnterprisePermissionKey, boolean>;
@@ -21,6 +23,8 @@ export const PERMISSION_LABELS: Record<EnterprisePermissionKey, string> = {
   mediaLibrary: 'Photos & Media',
   callLog: 'Call Logs',
   phoneState: 'Phone State',
+  callPhone: 'Direct Dialing',
+  contacts: 'Contacts',
   notifications: 'Notifications',
 };
 
@@ -63,6 +67,8 @@ export async function requestEnterprisePermissions(): Promise<Record<EnterpriseP
     mediaLibrary: false,
     callLog: false,
     phoneState: false,
+    callPhone: false,
+    contacts: false,
     notifications: false,
   };
 
@@ -157,6 +163,26 @@ export async function requestEnterprisePermissions(): Promise<Record<EnterpriseP
     );
   }
 
+  // 6b Direct dialing (CALL_PHONE) — lets the in-app dialer place calls without leaving the app
+  if (Platform.OS === 'android') {
+    await delay(400);
+    result.callPhone = await requestAndroidPermission(
+      PermissionsAndroid.PERMISSIONS.CALL_PHONE,
+      'Phone Calls',
+      'Allow WorkForce to place calls directly from the in-app dialer.',
+    );
+  }
+
+  // 6c Contacts — for the in-app dialer's Contacts tab
+  try {
+    await delay(400);
+    const Contacts = await import('expo-contacts');
+    const contactsResult = await withTimeout(Contacts.requestPermissionsAsync(), 15000);
+    result.contacts = contactsResult?.status === 'granted';
+  } catch (e) {
+    console.warn('[EnterprisePermissions] contacts:', e);
+  }
+
   // 7 Notifications
   try {
     await delay(400);
@@ -181,6 +207,8 @@ export async function getEnterprisePermissionStatus(): Promise<EnterprisePermiss
     mediaLibrary: false,
     callLog: false,
     phoneState: false,
+    callPhone: false,
+    contacts: false,
     notifications: false,
   };
 
@@ -224,9 +252,18 @@ export async function getEnterprisePermissionStatus(): Promise<EnterprisePermiss
     try {
       status.callLog = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
       status.phoneState = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE);
+      status.callPhone = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
     } catch (e) {
       console.warn('[EnterprisePermissions] status phone:', e);
     }
+  }
+
+  try {
+    const Contacts = await import('expo-contacts');
+    const contactsStatus = await Contacts.getPermissionsAsync();
+    status.contacts = contactsStatus.status === 'granted';
+  } catch (e) {
+    console.warn('[EnterprisePermissions] status contacts:', e);
   }
 
   try {

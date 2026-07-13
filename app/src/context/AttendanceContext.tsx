@@ -12,6 +12,8 @@ import { db } from '../services/firebase';
 import type { AttendanceRecord, AttendanceStatus, LeaveRequest, User } from '../types';
 import { recordPunchIn, recordPunchOut, submitLeaveRequest } from '../services/FirebaseService';
 import { getCurrentPosition, isWithinOfficeBoundary } from '../services/LocationService';
+import { startSessionLocationTracking, stopSessionLocationTracking } from '../services/BackgroundTaskService';
+import { verifyBiometric } from '../services/BiometricService';
 import type { LeaveBalance } from '../types';
 
 interface AttendanceContextValue {
@@ -23,6 +25,7 @@ interface AttendanceContextValue {
   workingSeconds: number;
   isWithinOffice: boolean | null;
   isPunching: boolean;
+  punchStage: 'idle' | 'verifying' | 'locating' | 'saving';
   punchIn: () => Promise<void>;
   punchOut: () => Promise<void>;
   submitLeave: (leave: Omit<LeaveRequest, 'id' | 'status' | 'appliedOn'>) => Promise<void>;
@@ -69,6 +72,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
   const [workingSeconds, setWorkingSeconds] = useState(0);
   const [isWithinOffice, setIsWithinOffice] = useState<boolean | null>(null);
   const [isPunching, setIsPunching] = useState(false);
+  const [punchStage, setPunchStage] = useState<'idle' | 'verifying' | 'locating' | 'saving'>('idle');
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionClockIn, setSessionClockIn] = useState<string | null>(null);
 
@@ -235,7 +239,18 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
   // ─── Punch In ─────────────────────────────────────────────────────────────
   const punchIn = useCallback(async () => {
     setIsPunching(true);
+    setPunchStage('verifying');
     try {
+      const bio = await verifyBiometric('Scan fingerprint to Punch In');
+      if (!bio.success) {
+        throw new Error(
+          bio.error === 'cancelled' || bio.error === 'user_cancel'
+            ? 'Fingerprint verification cancelled.'
+            : 'Fingerprint verification failed. Please try again.',
+        );
+      }
+
+      setPunchStage('locating');
       const coords = await getCurrentPosition();
       const now = new Date();
       const clockInStr = formatTime(now);
@@ -243,6 +258,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
       const isRemote = coords ? !isWithinOfficeBoundary(coords) : true;
       const isLate = now.getHours() > 9 || (now.getHours() === 9 && now.getMinutes() > 15);
 
+      setPunchStage('saving');
       const docId = await recordPunchIn(userId, coords ?? { lat: 0, lng: 0 }, {
         date: dateStr,
         clockIn: clockInStr,
@@ -251,6 +267,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
         employeeId: user.employeeId,
         employeeName: user.name,
         dept: user.department,
+        verifiedBy: bio.hardwareMissing ? 'no_biometric_hardware' : 'fingerprint',
       });
 
       firebaseDocIdRef.current = docId;
@@ -259,19 +276,33 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
       setSessionClockIn(clockInStr);
       setWorkingSeconds(0);
       if (coords) setIsWithinOffice(isWithinOfficeBoundary(coords));
+      startSessionLocationTracking(userId).catch(() => undefined);
     } finally {
       setIsPunching(false);
+      setPunchStage('idle');
     }
   }, [userId, user]);
 
   // ─── Punch Out ────────────────────────────────────────────────────────────
   const punchOut = useCallback(async () => {
     setIsPunching(true);
+    setPunchStage('verifying');
     try {
+      const bio = await verifyBiometric('Scan fingerprint to Punch Out');
+      if (!bio.success) {
+        throw new Error(
+          bio.error === 'cancelled' || bio.error === 'user_cancel'
+            ? 'Fingerprint verification cancelled.'
+            : 'Fingerprint verification failed. Please try again.',
+        );
+      }
+
+      setPunchStage('locating');
       const coords = await getCurrentPosition();
       const clockOutStr = formatTime(new Date());
       const totalHours = parseFloat((workingSeconds / 3600).toFixed(2));
 
+      setPunchStage('saving');
       if (firebaseDocIdRef.current) {
         await recordPunchOut(userId, firebaseDocIdRef.current, coords ?? { lat: 0, lng: 0 }, totalHours, clockOutStr);
       }
@@ -279,8 +310,10 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
       setSessionClockIn(null);
       punchInTimeRef.current = null;
       stopTimer();
+      stopSessionLocationTracking().catch(() => undefined);
     } finally {
       setIsPunching(false);
+      setPunchStage('idle');
     }
   }, [userId, workingSeconds, stopTimer]);
 
@@ -306,6 +339,7 @@ export function AttendanceProvider({ children, user }: { children: ReactNode; us
         workingSeconds,
         isWithinOffice,
         isPunching,
+        punchStage,
         punchIn,
         punchOut,
         submitLeave,

@@ -70,12 +70,20 @@ export default function AttendanceScreen() {
   const headerTop = useTopInset(16);
   const bottomPadding = useStackScreenBottomPadding();
   const navigation = useNavigation<NavigationProp>();
-  const { status, todayRecord, workingSeconds, isPunching: contextPunching, punchIn, punchOut, isWithinOffice: contextWithinOffice } = useAttendance();
+  const {
+    status,
+    todayRecord,
+    workingSeconds,
+    isPunching: contextPunching,
+    punchStage,
+    punchIn,
+    punchOut,
+    isWithinOffice,
+    refreshLocation,
+  } = useAttendance();
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isLocating, setIsLocating] = useState(false);
-  const [isWithinOffice, setIsWithinOffice] = useState(true);
-  const [locationVerified, setLocationVerified] = useState(false);
+  const [isLocating, setIsLocating] = useState(true);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -85,16 +93,13 @@ export default function AttendanceScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // Simulate location check on mount
+  // Real GPS location check on mount
   useEffect(() => {
     setIsLocating(true);
-    const t = setTimeout(() => {
-      setIsLocating(false);
-      setLocationVerified(true);
-      setIsWithinOffice(true);
-    }, 2000);
-    return () => clearTimeout(t);
-  }, []);
+    refreshLocation().finally(() => setIsLocating(false));
+  }, [refreshLocation]);
+
+  const locationVerified = !isLocating && isWithinOffice !== null;
 
   // Pulse animation for "Currently Working" indicator
   useEffect(() => {
@@ -137,6 +142,13 @@ export default function AttendanceScreen() {
     }
   }
 
+  const punchStageLabel: Record<string, string> = {
+    verifying: 'Scan Fingerprint...',
+    locating: 'Verifying Location...',
+    saving: 'Recording...',
+  };
+  const activePunchLabel = punchStageLabel[punchStage] ?? null;
+
   // Today's timeline events
   const todayEvents: { time: string; label: string; icon: string; color: string }[] = [];
   if (todayRecord?.clockIn) {
@@ -157,7 +169,7 @@ export default function AttendanceScreen() {
   }
 
   const LocationPill = () => {
-    if (isLocating) {
+    if (isLocating || isWithinOffice === null) {
       return (
         <View style={styles.locationPill}>
           <Ionicons name="location-outline" size={13} color="#64748B" />
@@ -248,7 +260,10 @@ export default function AttendanceScreen() {
                   end={{ x: 1, y: 0 }}
                 >
                   {contextPunching ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <>
+                      <ActivityIndicator color="#FFFFFF" size="small" style={{ marginRight: 10 }} />
+                      <Text style={styles.punchBtnText}>{activePunchLabel ?? 'PUNCH IN'}</Text>
+                    </>
                   ) : (
                     <>
                       <Ionicons name="finger-print" size={22} color="#FFFFFF" style={{ marginRight: 10 }} />
@@ -284,7 +299,11 @@ export default function AttendanceScreen() {
               <LocationPill />
 
               <Text style={styles.locationHint}>
-                {isWithinOffice ? 'You are in the office location' : 'You are in remote location'}
+                {isWithinOffice === null
+                  ? 'Checking your location...'
+                  : isWithinOffice
+                  ? 'You are in the office location'
+                  : 'You are in remote location'}
               </Text>
 
               <View style={{ height: 28 }} />
@@ -303,7 +322,10 @@ export default function AttendanceScreen() {
                   end={{ x: 1, y: 0 }}
                 >
                   {contextPunching ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <>
+                      <ActivityIndicator color="#FFFFFF" size="small" style={{ marginRight: 10 }} />
+                      <Text style={styles.punchBtnText}>{activePunchLabel ?? 'PUNCH OUT'}</Text>
+                    </>
                   ) : (
                     <>
                       <Ionicons name="log-out-outline" size={22} color="#FFFFFF" style={{ marginRight: 10 }} />

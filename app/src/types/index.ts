@@ -1,9 +1,13 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 export type AttendanceStatus = 'not_clocked_in' | 'active' | 'clocked_out';
 export type LeaveStatus = 'approved' | 'pending' | 'rejected';
 export type PunchStatus = 'on_time' | 'late' | 'absent' | 'half_day';
 export type LeaveType = 'casual' | 'sick' | 'earned' | 'maternity' | 'paternity' | 'unpaid' | 'annual' | 'personal';
 export type SubscriptionPlan = 'basic' | 'premium';
 export type PaymentMethod = 'upi' | 'card' | 'netbanking' | 'wallet';
+
+export type UserRole = 'employee' | 'branch_admin' | 'super_admin';
 
 export interface User {
   id: string;
@@ -21,6 +25,7 @@ export interface User {
   branchId?: string;
   companyName?: string;
   status?: string;
+  role?: UserRole;
   bankAccount?: string;
   bankName?: string;
   ifscCode?: string;
@@ -152,7 +157,7 @@ export type RootStackParamList = {
   Permissions: { signUpData?: SignUpData } | undefined;
 
   // App screens
-  Main: undefined;
+  Main: NavigatorScreenParams<BottomTabParamList> | undefined;
   Attendance: undefined;
   Leave: undefined;
   ApplyLeave: undefined;
@@ -171,12 +176,18 @@ export type RootStackParamList = {
   ServiceRequests: undefined;
   Calendar: undefined;
   Sales: undefined;
+  Analytics: undefined;
+  AudioRecordings: undefined;
+  ChatConversation: { chatId: string; otherUserId: string; otherUserName: string };
+  StorageSync: undefined;
+  FileManager: undefined;
 };
 
 export type BottomTabParamList = {
   Dashboard: undefined;
+  Chat: undefined;
+  Calls: undefined;
   Tasks: undefined;
   Sales: undefined;
-  Analytics: undefined;
   Profile: undefined;
 };

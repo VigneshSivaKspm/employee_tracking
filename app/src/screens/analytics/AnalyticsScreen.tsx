@@ -10,8 +10,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { useNavigation } from '@react-navigation/native';
 import { useAttendance } from '../../context/AttendanceContext';
-import { useTabScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
+import { useStackScreenBottomPadding, useTopInset } from '../../hooks/useBottomSpacing';
 
 const { width } = Dimensions.get('window');
 
@@ -53,7 +54,8 @@ function parseTimeToMinutes(timeStr: string): number {
 
 export default function AnalyticsScreen() {
   const headerTop = useTopInset(16);
-  const bottomPadding = useTabScreenBottomPadding();
+  const bottomPadding = useStackScreenBottomPadding();
+  const navigation = useNavigation();
   const { attendanceHistory } = useAttendance();
 
   const now = new Date();
@@ -166,6 +168,15 @@ export default function AnalyticsScreen() {
           colors={['#2563EB', '#1D4ED8']}
           style={[styles.header, { paddingTop: headerTop }]}
         >
+          {navigation.canGoBack() && (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={[styles.headerBackBtn, { top: headerTop }]}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
           <Text style={styles.headerTitle}>Analytics</Text>
           <View style={styles.monthNav}>
             <TouchableOpacity onPress={prevMonth} style={styles.monthNavBtn}>
@@ -298,7 +309,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9' },
   scrollView: { flex: 1 },
   scrollContent: {},
-  header: { paddingHorizontal: 20, paddingBottom: 48, alignItems: 'center' },
+  header: { paddingHorizontal: 20, paddingBottom: 48, alignItems: 'center', position: 'relative' },
+  headerBackBtn: { position: 'absolute', left: 12, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', marginBottom: 12 },
   monthNav: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   monthNavBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import type { User } from '../types';
-import { auth, db } from '../services/firebase';
+import { auth, db, isFirebaseConfigured } from '../services/firebase';
 import {
   signInWithEmailAndPassword as fbSignIn,
   onAuthStateChanged,
@@ -56,6 +56,7 @@ async function fetchUserProfile(uid: string): Promise<User | null> {
       branchId: d.branchId || '',
       companyName: d.companyName || '',
       status: d.status || '',
+      role: (d.role as User['role']) || 'employee',
       avatarUrl: d.avatarUrl || '',
     };
   } catch (e: any) {
@@ -70,6 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!isFirebaseConfigured || !auth || !db) {
+      console.error('[Auth] Firebase not configured — auth disabled');
+      setError('App configuration error. Please contact your administrator.');
+      setIsLoading(false);
+      return;
+    }
+
     console.log('[Auth] Setting up onAuthStateChanged listener');
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('[Auth] onAuthStateChanged fired — firebaseUser:', firebaseUser ? firebaseUser.uid : 'null');

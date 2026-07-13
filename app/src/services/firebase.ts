@@ -1,7 +1,7 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { initializeAuth, getReactNativePersistence, getAuth, type Auth } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -12,32 +12,44 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.projectId &&
+  firebaseConfig.appId,
+);
+
 console.log('[Firebase] Init — projectId:', firebaseConfig.projectId ?? 'MISSING');
 console.log('[Firebase] Init — apiKey set:', !!firebaseConfig.apiKey);
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-console.log('[Firebase] App name:', app.name);
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let storage: FirebaseStorage | null = null;
 
-// Try AsyncStorage persistence; fall back to in-memory (still works within a session)
-let auth;
-try {
-  // Dynamic require so a missing native module doesn't crash the import
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
-  console.log('[Firebase] Auth: AsyncStorage persistence enabled');
-} catch (e: any) {
-  console.warn('[Firebase] Auth persistence fallback (in-memory):', e?.code ?? e?.message);
+if (isFirebaseConfigured) {
   try {
-    auth = getAuth(app);
-  } catch {
-    auth = getAuth(app);
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    console.log('[Firebase] App name:', app.name);
+
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      auth = initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+      console.log('[Firebase] Auth: AsyncStorage persistence enabled');
+    } catch (e: any) {
+      console.warn('[Firebase] Auth persistence fallback (in-memory):', e?.code ?? e?.message);
+      auth = getAuth(app);
+    }
+
+    db = getFirestore(app);
+    storage = getStorage(app);
+    console.log('[Firebase] Ready — auth:', !!auth, 'db:', !!db, 'storage:', !!storage);
+  } catch (e: any) {
+    console.error('[Firebase] Initialization failed:', e?.code ?? e?.message);
   }
+} else {
+  console.error('[Firebase] Missing EXPO_PUBLIC_FIREBASE_* env vars. Copy .env.example to .env and rebuild.');
 }
 
-export { auth };
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-console.log('[Firebase] Ready — auth:', !!auth, 'db:', !!db, 'storage:', !!storage);
+export { app, auth, db, storage };
